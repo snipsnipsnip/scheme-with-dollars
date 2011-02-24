@@ -229,22 +229,24 @@ instance Show V where
 eval :: S -> I V
 eval (Q s) = return $ S s
 eval s@(L []) = return $ S s
-eval (L xs) = do
-    r:rs <- mapM eval xs
-    apply r rs
+eval (L (x:xs)) = do
+    x <- eval x
+    apply x xs
 eval (A (Sym a)) = do
     lookupName a
 eval s@(A _) = return $ S s
 
-apply :: V -> [V] -> I V
+apply :: V -> [S] -> I V
 apply (U m) _ = fail $ "can't apply undefined: " ++ show m
 apply (F env argnames f) args = do
+    values <- mapM eval args
     withEnv env $ do
-        withFrame (makeFrame $ zip argnames args) $ do
+        withFrame (makeFrame $ zip argnames values) $ do
             e <- I get
             evalBegin f
 apply (Prim _ p) args = do
-    p args
+    values <- mapM eval args
+    p values
 apply (S s) _ = fail $ "can't apply " ++ show s
 
 evalBegin :: [S] -> I V
