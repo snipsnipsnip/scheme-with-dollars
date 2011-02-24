@@ -207,25 +207,25 @@ data V
     = S S
     | U String
     | F Env [String] [S]
-    deriving (Show, Eq)
 
 eval :: S -> I V
 eval (Q s) = return $ S s
+eval s@(L []) = return $ S s
 eval (L xs) = do
     r:rs <- mapM eval xs
     apply r rs
 eval (A (Sym a)) = do
     lookupName a
-eval s = return $ S s
+eval s@(A _) = return $ S s
 
 apply :: V -> [V] -> I V
-apply (U m) _ = fail $ ($ "") $ showString "can't apply undefined: "  . shows m
+apply (U m) _ = fail $ "can't apply undefined: " ++ show m
 apply (F env argnames f) args = do
     withEnv env $ do
         withFrame (makeFrame $ zip argnames args) $ do
             e <- I get
             evalBegin f
-apply (S s) _ = fail $ ($ "") $ showString "can't apply "  . shows s
+apply (S s) _ = fail $ "can't apply " ++ show s
 
 evalBegin :: [S] -> I V
 evalBegin [] = return $ U "empty begin"
