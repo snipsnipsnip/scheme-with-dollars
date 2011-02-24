@@ -258,12 +258,16 @@ apply (F env argspec f) args = do
             evalBegin f
     where
     bind (Left argnames) values = zip argnames values
-    bind (Right argname) values = [(argname, listToS values)]
+    bind (Right argname) values = [(argname, listToV values)]
 apply (Prim _ p) args = applyPrim p args
 apply (S s) _ = fail $ "can't apply " ++ show s
 
-listToS :: [V] -> V
-listToS vs = S $ L $ map pull vs
+listToV :: [V] -> V
+listToV vs = S $ L $ map vtoS vs
+
+vtoS :: V -> S
+vtoS (S s) = s
+vtoS e = C e
     where
     pull (S s) = s
     pull e = C e
@@ -280,11 +284,30 @@ evalBegin [] = return $ U "empty begin"
 evalBegin [s] = eval s
 evalBegin (s:ss) = eval s >> evalBegin ss
 
+evalDefine [A (Sym name), exp] = do
+    val <- eval exp
+    I $ modify $ defineEnv name val
+    return $ U $ "defined '" ++ name ++ "'"
+
+isSymbol :: S -> Bool
+isSymbol (A (Sym _)) = True
+isSymbol _ = False
+
+evalLambda (argspec:body) = do
+    case argspec of
+        L names -> do
+            let args = [name | A (Sym name) <- names]
+            unless (length args == length names) $ do
+                fail $ "syntax error"
+            env <- I get
+            return $ F env (Left args) body
+
+
 ----
 
 ii :: String -> IO (Either String V)
 ii str = case parseSexp str of
-    Left e -> return $ Left e
+    Left e -> return $ Left $ "Parse error:" ++ e
     Right (s, rest) -> evalI [prims] $ eval s
     where
     prims = map (\(name, prim) -> (name, Prim name prim)) registerPrims
@@ -299,11 +322,5 @@ ii str = case parseSexp str of
             return $ U "print"
         
         syntax "begin" evalBegin
-        
         syntax "define" evalDefine
-
-evalDefine [A (Sym name), exp] = do
-    val <- eval exp
-    I $ modify $ defineEnv name val
-    return $ U $ "defined '" ++ name ++ "'"
-
+        syntax "lambda" evalLambda
