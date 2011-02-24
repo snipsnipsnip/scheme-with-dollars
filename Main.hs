@@ -1,8 +1,10 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GADTs #-}
 
 import Control.Monad.State
 import Control.Monad.Error
 import Control.Monad.Reader
+import Control.Monad.Cont
 import Control.Applicative
 import List
 import IO
@@ -105,10 +107,7 @@ test = runP expr "1 + 1 * (6/9 )* 3 + 4" == Right (7, "")
 
 ------------
 
-data GS a
-    = L [S]
-    | A Atom
-    | C a
+newtype S = S (Either Atom [S])
 
 data Atom
     = Str String
@@ -122,12 +121,9 @@ showRoundList :: [ShowS] -> ShowS
 showRoundList list =
     showParen True $ foldl (.) id $ intersperse (showChar ' ') list
 
-instance Show a => Show (GS a) where
-    showsPrec _ s = case s of
-        L list -> shows list
-        A a -> shows a
-        C a -> shows a
-    showList [A (Sym "quote"), s] = showChar '\'' . shows s
+instance Show S where
+    showsPrec _ (S s) = either shows shows s
+    showList [S (Left (Sym "quote")), s] = showChar '\'' . shows s
     showList list = showRoundList $ map shows list
 
 instance Show Atom where
@@ -149,19 +145,18 @@ stringEscapable marker escape = paren marker marker $ many chr
     special 't' = '\t'
     special c = c
 
-sexp :: P (GS a)
+sexp :: P S
 sexp = ws *> sexp1
     where
-    sexp1 :: P (GS a)
-    sexp1 = atom <|> quote <|> list
+    sexp1 = fmap S (atom <|> quote <|> list)
     
     quote = fmap wrap $ do
         char '\''
         sexp
         where
-        wrap s = L [A (Sym "quote"), s]
+        wrap s = Right [S $ Left $ Sym "quote", s]
     
-    atom = fmap A $ str <|> sharp <|> num <|> sym 
+    atom = fmap Left $ str <|> sharp <|> num <|> sym 
         where
         num = fmap Num $ number
         str = fmap Str $ stringEscapable '"' '\\'
@@ -177,7 +172,7 @@ sexp = ws *> sexp1
         rest = charExcept prohibited
         prohibited = " \t\n\\,'\"()[]|"
     
-    list = fmap L $ paren '(' ')' $ do
+    list = fmap Right $ paren '(' ')' $ do
         ws
         list1 <* ws <|> pure []
         where
@@ -196,13 +191,13 @@ eatUntil str = loop str
         d <- anyChar
         if c == d then loop cs else loop str
 
-parseSexp :: String -> Either String (GS a, String)
+parseSexp :: String -> Either String (S, String)
 parseSexp = runP sexp
 
-parseManySexp :: String -> Either String ([GS a], String)
+parseManySexp :: String -> Either String ([S], String)
 parseManySexp = runP (many sexp)
 
-instance Read (GS a) where
+instance Read S where
     readsPrec _ str = case parseSexp str of
         Right v -> [v]
         Left e -> error e
@@ -218,6 +213,10 @@ type Env = [Frame]
 addEnv frame env = frame : env
 findEnv name env = msum $ map (findFrame name) env
 
+defineEnv :: String -> V -> Env -> Env
+defineEnv name value [] = [makeFrame [(name, value)]]
+defineEnv name value (f:fs) = addFrame name value f : fs
+
 newtype I a = I (ErrorT String (StateT Env IO) a) deriving (Monad, Functor, MonadIO)
 
 sandbox :: (Monad m) => StateT s m a -> StateT s m a
@@ -231,10 +230,6 @@ withFrame frame (I m) = I $ ErrorT $ sandbox $ withStateT (frame:) (runErrorT m)
 withEnv :: Env -> I a -> I a
 withEnv env (I m) = I $ ErrorT $ sandbox $ withStateT (const env) (runErrorT m)
 
-defineEnv :: String -> V -> Env -> Env
-defineEnv name value [] = [makeFrame [(name, value)]]
-defineEnv name value (f:fs) = addFrame name value f : fs
-
 lookupName :: String -> I V
 lookupName name = I $ do
     r <- gets $ findEnv name
@@ -246,10 +241,9 @@ runI env (I i) = runStateT (runErrorT i) env
 evalI :: Env -> I a -> IO (Either String a)
 evalI env (I i) = evalStateT (runErrorT i) env
 
-type S = GS V
-
 data V
-    = S S
+    = A Atom
+    | L [V]
     | U String
     | F Env (Either [String] String) [S]
     | Prim String Prim
@@ -260,7 +254,8 @@ data Prim
 
 instance Show V where
     showsPrec _ v = case v of
-        S s -> shows s
+        A a -> shows a
+        L l -> showRoundList (map shows l)
         U s -> val "undef" $ showString s
         F env argspec body -> val "func" $ case argspec of
             Left args -> showRoundList (map showString args)
@@ -272,13 +267,14 @@ instance Show V where
         primName (Syntax _) = "syntax"
 
 eval :: S -> I V
-eval s@(L []) = return $ S s
-eval (L (x:xs)) = do
-    x <- eval x
-    apply x xs
-eval (A (Sym a)) = do
-    lookupName a
-eval s@(A _) = return $ S s
+eval (S s) = case s of
+    Right [] -> return $ L []
+    Right (x:xs) -> do
+        x <- eval x
+        apply x xs
+    Left (Sym a) -> do
+        lookupName a
+    s@(Left a) -> return $ A a
 
 apply :: V -> [S] -> I V
 apply (U m) _ = fail $ "can't apply undefined: " ++ show m
@@ -288,19 +284,10 @@ apply v@(F env argspec f) args = do
         evalBegin f
     where
     bind (Left argnames) values = zip argnames values
-    bind (Right argname) values = [(argname, listToV values)]
+    bind (Right argname) values = [(argname, L values)]
 apply (Prim _ p) args = applyPrim p args
-apply (S s) _ = fail $ "can't apply " ++ show s
-
-listToV :: [V] -> V
-listToV vs = S $ L $ map vtoS vs
-
-vtoS :: V -> S
-vtoS (S s) = s
-vtoS e = C e
-    where
-    pull (S s) = s
-    pull e = C e
+apply (A a) _ = fail $ "can't apply " ++ show a
+apply (L l) _ = fail $ "can't apply " ++ show l
 
 applyPrim :: Prim -> [S] -> I V
 applyPrim (Subr s) args = do
@@ -314,31 +301,26 @@ evalBegin [] = return $ U "empty begin"
 evalBegin [s] = eval s
 evalBegin (s:ss) = eval s >> evalBegin ss
 
-evalDefine [A (Sym name), exp] = do
+evalDefine [S (Left (Sym name)), exp] = do
     val <- eval exp
     I $ modify $ defineEnv name val
     return $ U $ "defined '" ++ name ++ "'"
 
-isSymbol :: S -> Bool
-isSymbol (A (Sym _)) = True
-isSymbol _ = False
-
-evalLambda (argspec:body) = do
-    case argspec of
-        L names -> do
-            let args = [name | A (Sym name) <- names]
-            unless (length args == length names) $ do
-                fail $ "invalid arg spec"
-            env <- I get
-            return $ F env (Left args) body
-        A (Sym name) -> do
-            env <- I get
-            return $ F env (Right name) body
-        _ -> fail "invalid arg spec"
+evalLambda :: [S] -> I V
+evalLambda (S argspec:body) = case argspec of
+    Right names -> do
+        args <- mapM getName names
+        env <- I get
+        return $ F env (Left args) body
+    Left (Sym name) -> do
+        env <- I get
+        return $ F env (Right name) body
+    _ -> fail "invalid arg spec"
+    where
+    getName (S (Left (Sym name))) = return name
+    getName _ = fail "invalid arg spec"
 
 ----
-
-
 
 load :: FilePath -> IO (Either String V)
 load file = do
@@ -377,25 +359,31 @@ run code = case parseManySexp code of
         syntax "begin" evalBegin
         syntax "define" evalDefine
         syntax "lambda" evalLambda
-        syntax "quote" $ \[e] -> return $ S e
+        syntax "quote" $ \[e] -> return $ sToV e
         
         alias "p" "print"
         alias "^" "lambda"
         
         syntax "if" evalIf
 
+sToV :: S -> V
+sToV (S s) = case s of
+    Left a -> A a
+    Right ss -> L (map sToV ss)
+
 evalNum :: (Double -> Double -> Double) -> Either Double (Double -> Double) -> [V] -> I V
-evalNum _ (Left d) [] = return $ S $ A $ Num d
+evalNum _ (Left d) [] = return $ A $ Num d
 evalNum _ (Right _) [] = fail "procedure requires at least one argument"
 evalNum _ (Left _) [n] = return n
-evalNum _ (Right op) [nv] = fmap (S . A . Num . op) $ unnum nv
-evalNum op _ xs = fmap (S . A . Num . foldl1 op) $ mapM unnum xs
+evalNum _ (Right op) [nv] = fmap (A . Num . op) $ unnum nv
+evalNum op _ xs = fmap (A . Num . foldl1 op) $ mapM unnum xs
 
-unnum (S (A (Num x))) = return x
+unnum (A (Num x)) = return x
 unnum x = fail $ "number expected, but got " ++ show x
 
-evalCompare op [S (A a), S (A b)] = do
-    return $ S $ A $ Bool $ a `op` b
+evalCompare :: (Atom -> Atom -> Bool) -> [V] -> I V
+evalCompare op [A a, A b] = do
+    return $ A $ Bool $ a `op` b
 
 evalIf [cond, true] = do
     result <- eval cond
@@ -409,5 +397,5 @@ evalIf [cond, true, false] = do
         then eval true
         else eval false
 
-isTrue (S (A (Bool False))) = False
+isTrue (A (Bool False)) = False
 isTrue _ = True
