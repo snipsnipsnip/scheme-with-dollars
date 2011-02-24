@@ -207,11 +207,16 @@ findEnv name env = msum $ map (findFrame name) env
 
 newtype I a = I (ErrorT String (StateT Env IO) a) deriving (Monad, Functor, MonadIO)
 
+sandbox :: (Monad m) => StateT s m a -> StateT s m a
+sandbox m = StateT $ \s -> do
+    (a, _) <- runStateT m s
+    return (a, s)
+
 withFrame :: Frame -> I a -> I a
-withFrame frame (I m) = I $ ErrorT $ withStateT (frame:) (runErrorT m)
+withFrame frame (I m) = I $ ErrorT $ sandbox $ withStateT (frame:) (runErrorT m)
 
 withEnv :: Env -> I a -> I a
-withEnv env (I m) = I $ ErrorT $ withStateT (const env) (runErrorT m)
+withEnv env (I m) = I $ ErrorT $ sandbox $ withStateT (const env) (runErrorT m)
 
 defineEnv :: String -> V -> Env -> Env
 defineEnv name value [] = [makeFrame [(name, value)]]
@@ -265,13 +270,10 @@ eval s@(A _) = return $ S s
 
 apply :: V -> [S] -> I V
 apply (U m) _ = fail $ "can't apply undefined: " ++ show m
-apply (F env argspec f) args = do
+apply v@(F env argspec f) args = do
     values <- mapM eval args
-    withEnv env $ do
-        withFrame (makeFrame $ bind argspec values) $ do
-            e <- I get
-            liftIO $ print e
-            evalBegin f
+    withEnv (flip addEnv env $ makeFrame $ bind argspec values) $ do
+        evalBegin f
     where
     bind (Left argnames) values = zip argnames values
     bind (Right argname) values = [(argname, listToV values)]
