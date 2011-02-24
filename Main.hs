@@ -114,6 +114,7 @@ data Atom
     = Str String
     | Sym String
     | Num Double
+    | Chr Char
     | Bool Bool
     deriving (Eq, Ord)
 
@@ -123,16 +124,18 @@ showRoundList list =
 
 instance Show a => Show (GS a) where
     showsPrec _ s = case s of
-        L [A (Sym "quote"), s] -> showChar '\'' . shows s
-        L list -> showRoundList $ map shows list
+        L list -> shows list
         A a -> shows a
         C a -> shows a
+    showList [A (Sym "quote"), s] = showChar '\'' . shows s
+    showList list = showRoundList $ map shows list
 
 instance Show Atom where
     showsPrec _ a = case a of
         Str s -> shows s
         Sym s -> showString s
         Num n -> shows n
+        Chr c -> showString "#\\" . showString (tail $ init $ show c)
         Bool True -> showString "#t"
         Bool False -> showString "#f"
 
@@ -158,15 +161,18 @@ sexp = ws *> sexp1
         where
         wrap s = L [A (Sym "quote"), s]
     
-    atom = fmap A $ num <|> str <|> sym <|> bool
+    atom = fmap A $ str <|> sharp <|> num <|> sym 
         where
         num = fmap Num $ number
         str = fmap Str $ stringEscapable '"' '\\'
         sym = fmap Sym $ name <|> stringEscapable '|' '\\'
-        bool = fmap Bool $ char '#' >> char 't' $> True <|> char 'f' $> False
+        sharp = char '#' >> true <|> false <|> chr
+        true = char 't' $> Bool True
+        false = char 'f' $> Bool False
+        chr = char '\\' *> fmap Chr anyChar
         
         name = liftA2 (:) first (many rest)
-        first = charExcept $ prohibited ++ "0123456789.#"
+        first = charExcept $ prohibited ++ ".#"
         rest = charExcept prohibited
         prohibited = " \t\n\\,'\"()[]|"
     
