@@ -9,14 +9,14 @@ import List
 import IO
 import SexpParser
 
-newtype I a = I (StateT Env (ContT V (ErrorT String IO)) a)
+newtype I a = I (ErrorT String (StateT Env (ContT V IO)) a)
     deriving (Monad, Functor, MonadIO, MonadCont)
 
-runI :: Env -> I V -> IO (Either String V)
-runI env (I i) = runErrorT (runContT (evalStateT i env) return)
-
-evalI :: Env -> I V -> IO (Either String V)
-evalI env i = runI env i
+runI :: Env -> I V -> IO V
+runI env (I i) = runContT (evalStateT (fmap coerceError $ runErrorT i) env) return
+    where
+    coerceError (Left msg) = U $ "error: " ++ msg
+    coerceError (Right v) = v
 
 type Frame = [(String, V)]
 addFrame name value frame = (name, value) : frame
@@ -74,7 +74,7 @@ eval (S s) = case s of
         lookupName a
     s@(Left a) -> return $ A a
 
-mapI f (I i) = I $ f i
+mapI f (I i) = I $ ErrorT $ f $ runErrorT i
 
 sandbox :: Monad m => StateT s m a -> StateT s m a
 sandbox m = StateT $ \s -> do
@@ -128,7 +128,7 @@ evalLambda (S argspec:body) = case argspec of
 
 ----
 
-load :: FilePath -> IO (Either String V)
+load :: FilePath -> IO V
 load file = do
     bracket (openFile file ReadMode) hClose $ \h -> do
       contents <- hGetContents h
@@ -139,7 +139,7 @@ runRepl = loop $ do
         putStr "> "
         line <- getLine
         result <- run line
-        either printError print result
+        print result
         return True
     `catch` \e -> do
         unless (isEOFError e) (printError e)
@@ -152,10 +152,10 @@ runRepl = loop $ do
         b <- m
         when b (loop m)
 
-run :: String -> IO (Either String V)
+run :: String -> IO V
 run code = case parseManySexp code of
-    Left e -> return $ Left $ "Parse error:" ++ e
-    Right (s, _) -> evalI [prims] $ evalBegin s
+    Left e -> return $ U $ "Parse error:" ++ e
+    Right (s, _) -> runI [prims] $ evalBegin s
     where
     prims = flip execState [] list
     subr name f = add name (Subr f)
