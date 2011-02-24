@@ -208,23 +208,32 @@ ii :: I a -> IO (Either String a)
 ii = evalI [prims]
     where
     prims = map (\p@(Prim name _) -> (name, p))
-        [ Prim "print" $ \vs -> do
+        [ Prim "print" $ Subr $ \vs -> do
             liftIO $ print vs
             return $ U "print"
+        , Prim "begin" $ Syntax evalBegin
         ]
 
 data V
     = S S
     | U String
     | F Env [String] [S]
-    | Prim String ([V] -> I V)
+    | Prim String Prim
+
+data Prim
+    = Subr ([V] -> I V)
+    | Syntax ([S] -> I V)
 
 instance Show V where
     showsPrec _ v = case v of
         S s -> shows s
-        U s -> showString "#<undef: " . showString s . showChar '>'
-        F env args body -> showString "#<func " . showRoundList (map showString args) . showChar '>'
-        Prim name _ -> showString "#<prim: " . showString name . showChar '>'
+        U s -> val "undef" $ showString s
+        F env args body -> val "func" $ showRoundList (map showString args)
+        Prim name prim -> val (primName prim) $ showString name
+        where
+        val name s = showString "#<" . showString name . showChar ' ' . s . showChar '>'
+        primName (Subr _) = "subr"
+        primName (Syntax _) = "syntax"
 
 eval :: S -> I V
 eval (Q s) = return $ S s
@@ -244,10 +253,15 @@ apply (F env argnames f) args = do
         withFrame (makeFrame $ zip argnames values) $ do
             e <- I get
             evalBegin f
-apply (Prim _ p) args = do
-    values <- mapM eval args
-    p values
+apply (Prim _ p) args = applyPrim p args
 apply (S s) _ = fail $ "can't apply " ++ show s
+
+applyPrim :: Prim -> [S] -> I V
+applyPrim (Subr s) args = do
+    values <- mapM eval args
+    s values
+applyPrim (Syntax s) args = do
+    s args
 
 evalBegin :: [S] -> I V
 evalBegin [] = return $ U "empty begin"
