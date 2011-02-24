@@ -204,6 +204,8 @@ instance Read S where
 
 --
 
+newtype I a = I (ContT V (ErrorT String (StateT Env IO)) a) deriving (Monad, Functor, MonadIO)
+
 type Frame = [(String, V)]
 addFrame name value frame = (name, value) : frame
 makeFrame kvs = kvs :: Frame
@@ -217,29 +219,31 @@ defineEnv :: String -> V -> Env -> Env
 defineEnv name value [] = [makeFrame [(name, value)]]
 defineEnv name value (f:fs) = addFrame name value f : fs
 
-newtype I a = I (ErrorT String (StateT Env IO) a) deriving (Monad, Functor, MonadIO)
-
 sandbox :: (Monad m) => StateT s m a -> StateT s m a
 sandbox m = StateT $ \s -> do
     (a, _) <- runStateT m s
     return (a, s)
 
+tweakState :: (Env -> Env) -> I a -> I a
+tweakState f (I m) = I $ ContT $ \cc -> runContT m $ \a -> do
+    ErrorT $ sandbox $ withStateT f $ runErrorT $ cc a
+
 withFrame :: Frame -> I a -> I a
-withFrame frame (I m) = I $ ErrorT $ sandbox $ withStateT (frame:) (runErrorT m)
+withFrame frame m = tweakState (frame:) m
 
 withEnv :: Env -> I a -> I a
-withEnv env (I m) = I $ ErrorT $ sandbox $ withStateT (const env) (runErrorT m)
+withEnv env m = tweakState (const env) m
 
 lookupName :: String -> I V
 lookupName name = I $ do
     r <- gets $ findEnv name
     maybe (fail $ "variable |" ++ name ++ "| not found") return r
 
-runI :: Env -> I a -> IO (Either String a, Env)
-runI env (I i) = runStateT (runErrorT i) env
+runI :: Env -> I V -> IO (Either String V, Env)
+runI env (I i) = runStateT (runErrorT (runContT i return)) env
 
-evalI :: Env -> I a -> IO (Either String a)
-evalI env (I i) = evalStateT (runErrorT i) env
+evalI :: Env -> I V -> IO (Either String V)
+evalI env i = fmap fst $ runI env i
 
 data V
     = A Atom
@@ -280,7 +284,11 @@ apply :: V -> [S] -> I V
 apply (U m) _ = fail $ "can't apply undefined: " ++ show m
 apply v@(F env argspec f) args = do
     values <- mapM eval args
+    e <- I $ gets $ map (map fst)
+    liftIO $ print v >> print e
     withEnv (flip addEnv env $ makeFrame $ bind argspec values) $ do
+        e <- I $ gets $ map (map fst)
+        liftIO $ print e
         evalBegin f
     where
     bind (Left argnames) values = zip argnames values
