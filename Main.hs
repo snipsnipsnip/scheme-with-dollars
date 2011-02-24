@@ -153,11 +153,16 @@ runRepl = loop $ do
         when b (loop m)
 
 run :: String -> IO V
-run code = case parseManySexp code of
+run =  runEI [prims]
+
+runEI :: Env -> String -> IO V
+runEI env code = case parseManySexp code of
     Left e -> return $ U $ "Parse error:" ++ e
-    Right (s, _) -> runI [prims] $ evalBegin s
+    Right (s, _) -> runI env $ evalBegin s
+
+prims :: Frame
+prims = flip execState [] list
     where
-    prims = flip execState [] list
     subr name f = add name (Subr f)
     syntax name s = add name (Syntax s)
     alias name n = modify $ \dict ->
