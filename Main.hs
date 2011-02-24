@@ -335,16 +335,12 @@ evalLambda (argspec:body) = do
 
 load :: FilePath -> IO (Either String V)
 load file = do
-    parsed <- bracket (openFile file ReadMode) hClose $ \h -> do
+    bracket (openFile file ReadMode) hClose $ \h -> do
       contents <- hGetContents h
-      return $ parseManySexp contents
-    run parsed
+      run contents
 
-ii :: String -> IO (Either String V)
-ii = run . parseManySexp
-
-run :: Either String ([S], String) -> IO (Either String V)
-run result = case result of
+run :: String -> IO (Either String V)
+run code = case parseManySexp code of
     Left e -> return $ Left $ "Parse error:" ++ e
     Right (s, _) -> evalI [prims] $ evalBegin s
     where
