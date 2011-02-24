@@ -104,11 +104,11 @@ test = runP expr "1 + 1 * (6/9 )* 3 + 4" == Right (7, "")
 
 ------------
 
-data S
+data GS a
     = L [S]
     | Q S
     | A Atom
-    deriving Eq
+    | C a
 
 data Atom
     = Str String
@@ -120,11 +120,12 @@ showRoundList :: [ShowS] -> ShowS
 showRoundList list =
     showParen True $ foldl (.) id $ intersperse (showChar ' ') list
 
-instance Show S where
+instance Show a => Show (GS a) where
     showsPrec _ s = case s of
         L list -> showRoundList $ map shows list
         Q s -> showChar '\'' . shows s
         A a -> shows a
+        C a -> shows a
 
 instance Show Atom where
     showsPrec _ a = case a of
@@ -142,9 +143,10 @@ stringEscapable marker escape = paren marker marker $ many chr
     special 't' = '\t'
     special c = c
 
-sexp :: P S
+sexp :: P (GS a)
 sexp = whitespace *> sexp1
     where
+    sexp1 :: P (GS a)
     sexp1 = atom <|> quote <|> list
     
     quote = fmap Q $ do
@@ -169,9 +171,10 @@ sexp = whitespace *> sexp1
         list1 = do
             liftA2 (:) sexp1 $ many $ whitespace1 *> sexp1
 
+parseSexp :: String -> Either String (GS a, String)
 parseSexp = runP sexp
 
-instance Read S where
+instance Read (GS a) where
     readsPrec _ str = case parseSexp str of
         Right v -> [v]
         Left e -> error e
@@ -209,6 +212,8 @@ runI env (I i) = runStateT (runErrorT i) env
 
 evalI :: Env -> I a -> IO (Either String a)
 evalI env (I i) = evalStateT (runErrorT i) env
+
+type S = GS V
 
 data V
     = S S
