@@ -174,6 +174,9 @@ sexp = whitespace *> sexp1
 parseSexp :: String -> Either String (GS a, String)
 parseSexp = runP sexp
 
+parseManySexp :: String -> Either String ([GS a], String)
+parseManySexp = runP (many sexp)
+
 instance Read (GS a) where
     readsPrec _ str = case parseSexp str of
         Right v -> [v]
@@ -309,9 +312,9 @@ evalLambda (argspec:body) = do
 ----
 
 ii :: String -> IO (Either String V)
-ii str = case parseSexp str of
+ii str = case parseManySexp str of
     Left e -> return $ Left $ "Parse error:" ++ e
-    Right (s, rest) -> evalI [prims] $ eval s
+    Right (s, _) -> evalI [prims] $ evalBegin s
     where
     prims = map (\(name, prim) -> (name, Prim name prim)) registerPrims
     
