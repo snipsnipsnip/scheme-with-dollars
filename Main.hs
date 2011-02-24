@@ -351,14 +351,14 @@ run code = case parseManySexp code of
     Left e -> return $ Left $ "Parse error:" ++ e
     Right (s, _) -> evalI [prims] $ evalBegin s
     where
-    prims = map (\(name, prim) -> (name, Prim name prim)) registerPrims
-    
-    registerPrims = flip execState [] list
-    subr name f = add (name, Subr f)
-    syntax name s = add (name, Syntax s)
-    add prim = modify (prim:)
+    prims = flip execState [] list
+    subr name f = add name (Subr f)
+    syntax name s = add name (Syntax s)
+    alias name n = modify $ \dict ->
+        let Just prim = lookup n dict in (name, prim) : dict
+    add name prim = modify ((name, Prim name prim):)
     list = do
-        subr "p" $ \vs -> do
+        subr "print" $ \vs -> do
             liftIO $ mapM_ print vs
             return $ U "print"
         
@@ -377,8 +377,10 @@ run code = case parseManySexp code of
         syntax "begin" evalBegin
         syntax "define" evalDefine
         syntax "lambda" evalLambda
-        syntax "^" evalLambda
         syntax "quote" $ \[e] -> return $ S e
+        
+        alias "p" "print"
+        alias "^" "lambda"
         
         syntax "if" evalIf
 
