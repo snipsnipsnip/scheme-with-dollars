@@ -106,7 +106,6 @@ test = runP expr "1 + 1 * (6/9 )* 3 + 4" == Right (7, "")
 
 data GS a
     = L [S]
-    | Q S
     | A Atom
     | C a
 
@@ -122,8 +121,8 @@ showRoundList list =
 
 instance Show a => Show (GS a) where
     showsPrec _ s = case s of
+        L [A (Sym "quote"), s] -> showChar '\'' . shows s
         L list -> showRoundList $ map shows list
-        Q s -> showChar '\'' . shows s
         A a -> shows a
         C a -> shows a
 
@@ -149,9 +148,11 @@ sexp = ws *> sexp1
     sexp1 :: P (GS a)
     sexp1 = atom <|> quote <|> list
     
-    quote = fmap Q $ do
+    quote = fmap wrap $ do
         char '\''
         sexp
+        where
+        wrap s = L [A (Sym "quote"), s]
     
     atom = fmap A $ num <|> str <|> sym
         where
@@ -259,7 +260,6 @@ instance Show V where
         primName (Syntax _) = "syntax"
 
 eval :: S -> I V
-eval (Q s) = return $ S s
 eval s@(L []) = return $ S s
 eval (L (x:xs)) = do
     x <- eval x
@@ -345,3 +345,4 @@ ii str = case parseManySexp str of
         syntax "begin" evalBegin
         syntax "define" evalDefine
         syntax "lambda" evalLambda
+        syntax "quote" $ \[e] -> return $ S e
