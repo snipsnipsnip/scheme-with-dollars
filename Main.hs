@@ -144,7 +144,7 @@ stringEscapable marker escape = paren marker marker $ many chr
     special c = c
 
 sexp :: P (GS a)
-sexp = whitespace *> sexp1
+sexp = ws *> sexp1
     where
     sexp1 :: P (GS a)
     sexp1 = atom <|> quote <|> list
@@ -165,11 +165,23 @@ sexp = whitespace *> sexp1
         prohibited = " \t\n\\,'\"()<>[]|"
     
     list = fmap L $ paren '(' ')' $ do
-        whitespace
-        list1 <* whitespace <|> pure []
+        ws
+        list1 <* ws <|> pure []
         where
         list1 = do
-            liftA2 (:) sexp1 $ many $ whitespace1 *> sexp1
+            liftA2 (:) sexp1 $ many $ ws1 *> sexp1
+    
+    ws = whitespace >> comment >> whitespace
+    ws1 = whitespace1 >> comment >> whitespace
+    comment = mapM_ char "#|" *> eatUntil "|#" <|> return ()
+
+eatUntil :: String -> P ()
+eatUntil str = loop str
+    where
+    loop "" = return ()
+    loop (c:cs) = do
+        d <- anyChar
+        if c == d then loop cs else loop str
 
 parseSexp :: String -> Either String (GS a, String)
 parseSexp = runP sexp
@@ -258,6 +270,7 @@ apply (F env argspec f) args = do
     withEnv env $ do
         withFrame (makeFrame $ bind argspec values) $ do
             e <- I get
+            liftIO $ print e
             evalBegin f
     where
     bind (Left argnames) values = zip argnames values
