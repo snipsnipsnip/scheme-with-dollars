@@ -134,6 +134,24 @@ load file = do
       contents <- hGetContents h
       run contents
 
+runRepl = loop $ do
+    do
+        putStr "> "
+        line <- getLine
+        result <- run line
+        either printError print result
+        return True
+    `catch` \e -> do
+        unless (isEOFError e) (printError e)
+        return $ isUserError e
+    where
+    printError e = do
+        putStr "error: "
+        print e
+    loop m = do
+        b <- m
+        when b (loop m)
+
 run :: String -> IO (Either String V)
 run code = case parseManySexp code of
     Left e -> return $ Left $ "Parse error:" ++ e
