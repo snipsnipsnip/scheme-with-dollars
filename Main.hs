@@ -204,7 +204,14 @@ instance Read S where
 
 --
 
-newtype I a = I (ContT V (ErrorT String (StateT Env IO)) a) deriving (Monad, Functor, MonadIO)
+newtype I a = I (StateT Env (ContT V (ErrorT String IO)) a)
+    deriving (Monad, Functor, MonadIO, MonadCont)
+
+runI :: Env -> I V -> IO (Either String V)
+runI env (I i) = runErrorT (runContT (evalStateT i env) return)
+
+evalI :: Env -> I V -> IO (Either String V)
+evalI env i = runI env i
 
 type Frame = [(String, V)]
 addFrame name value frame = (name, value) : frame
@@ -219,31 +226,13 @@ defineEnv :: String -> V -> Env -> Env
 defineEnv name value [] = [makeFrame [(name, value)]]
 defineEnv name value (f:fs) = addFrame name value f : fs
 
-sandbox :: (Monad m) => StateT s m a -> StateT s m a
-sandbox m = StateT $ \s -> do
-    (a, _) <- runStateT m s
-    return (a, s)
-
-tweakState :: (Env -> Env) -> I a -> I a
-tweakState f (I m) = I $ ContT $ \cc -> runContT m $ \a -> do
-    ErrorT $ sandbox $ withStateT f $ runErrorT $ cc a
-
-withFrame :: Frame -> I a -> I a
-withFrame frame m = tweakState (frame:) m
-
-withEnv :: Env -> I a -> I a
-withEnv env m = tweakState (const env) m
+showEnv :: Env -> String
+showEnv e = showRoundList (map (showRoundList . map (showString . fst)) e) ""
 
 lookupName :: String -> I V
 lookupName name = I $ do
     r <- gets $ findEnv name
     maybe (fail $ "variable |" ++ name ++ "| not found") return r
-
-runI :: Env -> I V -> IO (Either String V, Env)
-runI env (I i) = runStateT (runErrorT (runContT i return)) env
-
-evalI :: Env -> I V -> IO (Either String V)
-evalI env i = fmap fst $ runI env i
 
 data V
     = A Atom
@@ -280,15 +269,19 @@ eval (S s) = case s of
         lookupName a
     s@(Left a) -> return $ A a
 
+mapI f (I i) = I $ f i
+
+sandbox :: Monad m => StateT s m a -> StateT s m a
+sandbox m = StateT $ \s -> do
+    (a, _) <- runStateT m s
+    return (a, s)
+
 apply :: V -> [S] -> I V
 apply (U m) _ = fail $ "can't apply undefined: " ++ show m
 apply v@(F env argspec f) args = do
     values <- mapM eval args
-    e <- I $ gets $ map (map fst)
-    liftIO $ print v >> print e
-    withEnv (flip addEnv env $ makeFrame $ bind argspec values) $ do
-        e <- I $ gets $ map (map fst)
-        liftIO $ print e
+    mapI sandbox $ do
+        I $ put $ flip addEnv env $ makeFrame $ bind argspec values
         evalBegin f
     where
     bind (Left argnames) values = zip argnames values
