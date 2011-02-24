@@ -218,7 +218,7 @@ type S = GS V
 data V
     = S S
     | U String
-    | F Env [String] [S]
+    | F Env (Either [String] String) [S]
     | Prim String Prim
 
 data Prim
@@ -229,7 +229,9 @@ instance Show V where
     showsPrec _ v = case v of
         S s -> shows s
         U s -> val "undef" $ showString s
-        F env args body -> val "func" $ showRoundList (map showString args)
+        F env argspec body -> val "func" $ case argspec of
+            Left args -> showRoundList (map showString args)
+            Right arg -> showString arg
         Prim name prim -> val (primName prim) $ showString name
         where
         val name s = showString "#<" . showString name . showChar ' ' . s . showChar '>'
@@ -248,14 +250,23 @@ eval s@(A _) = return $ S s
 
 apply :: V -> [S] -> I V
 apply (U m) _ = fail $ "can't apply undefined: " ++ show m
-apply (F env argnames f) args = do
+apply (F env argspec f) args = do
     values <- mapM eval args
     withEnv env $ do
-        withFrame (makeFrame $ zip argnames values) $ do
+        withFrame (makeFrame $ bind argspec values) $ do
             e <- I get
             evalBegin f
+    where
+    bind (Left argnames) values = zip argnames values
+    bind (Right argname) values = [(argname, listToS values)]
 apply (Prim _ p) args = applyPrim p args
 apply (S s) _ = fail $ "can't apply " ++ show s
+
+listToS :: [V] -> V
+listToS vs = S $ L $ map pull vs
+    where
+    pull (S s) = s
+    pull e = C e
 
 applyPrim :: Prim -> [S] -> I V
 applyPrim (Subr s) args = do
