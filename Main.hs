@@ -361,6 +361,7 @@ run code = case parseManySexp code of
         syntax "define" evalDefine
         syntax "lambda" evalLambda
         syntax "quote" $ \[e] -> return $ sToV e
+        syntax "let" evalLet
         
         alias "p" "print"
         alias "^" "lambda"
@@ -385,6 +386,7 @@ unnum x = fail $ "number expected, but got " ++ show x
 evalCompare :: (Atom -> Atom -> Bool) -> [V] -> I V
 evalCompare op [A a, A b] = do
     return $ A $ Bool $ a `op` b
+evalCompare _ _ = fail "2 args expected"
 
 evalIf [cond, true] = do
     result <- eval cond
@@ -397,6 +399,17 @@ evalIf [cond, true, false] = do
     if isTrue result
         then eval true
         else eval false
+evalIf _ = fail "syntax error"
 
 isTrue (A (Bool False)) = False
 isTrue _ = True
+
+evalLet (S (Right bindings):body) = do
+    (vars, exps) <- fmap unzip $ mapM makePair bindings
+    env <- I get
+    apply (F env (Left vars) body) exps
+    where
+    makePair (S (Right [S (Left (Sym name)), expr])) = return (name, expr)
+    makePair _ = fail "syntax error"
+
+evalLet _ = fail "syntax error"
