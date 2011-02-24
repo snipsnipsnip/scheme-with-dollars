@@ -169,8 +169,10 @@ sexp = whitespace *> sexp1
         list1 = do
             liftA2 (:) sexp1 $ many $ whitespace1 *> sexp1
 
+parseSexp = runP sexp
+
 instance Read S where
-    readsPrec _ str = case runP sexp str of
+    readsPrec _ str = case parseSexp str of
         Right v -> [v]
         Left e -> error e
 
@@ -260,8 +262,10 @@ evalBegin (s:ss) = eval s >> evalBegin ss
 
 ----
 
-ii :: I a -> IO (Either String a)
-ii = evalI [prims]
+ii :: String -> IO (Either String V)
+ii str = case parseSexp str of
+    Left e -> return $ Left e
+    Right (s, rest) -> evalI [prims] $ eval s
     where
     prims = map (\p@(Prim name _) -> (name, p))
         [ Prim "p" $ Subr $ \vs -> do
