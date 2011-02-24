@@ -165,7 +165,7 @@ sexp = ws *> sexp1
         bool = fmap Bool $ char '#' >> char 't' $> True <|> char 'f' $> False
         
         name = liftA2 (:) first (many rest)
-        first = charExcept $ prohibited ++ "0123456789."
+        first = charExcept $ prohibited ++ "0123456789.#"
         rest = charExcept prohibited
         prohibited = " \t\n\\,'\"()<>[]|"
     
