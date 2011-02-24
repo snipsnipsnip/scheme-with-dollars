@@ -195,6 +195,10 @@ withFrame frame (I m) = I $ ErrorT $ withStateT (frame:) (runErrorT m)
 withEnv :: Env -> I a -> I a
 withEnv env (I m) = I $ ErrorT $ withStateT (const env) (runErrorT m)
 
+defineEnv :: String -> V -> Env -> Env
+defineEnv name value [] = [makeFrame [(name, value)]]
+defineEnv name value (f:fs) = addFrame name value f : fs
+
 lookupName :: String -> I V
 lookupName name = I $ do
     r <- gets $ findEnv name
@@ -279,4 +283,11 @@ ii str = case parseSexp str of
             return $ U "print"
         
         syntax "begin" evalBegin
+        
+        syntax "define" evalDefine
+
+evalDefine [A (Sym name), exp] = do
+    val <- eval exp
+    I $ modify $ defineEnv name val
+    return $ U $ "defined '" ++ name ++ "'"
 
