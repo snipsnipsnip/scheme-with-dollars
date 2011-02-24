@@ -267,9 +267,16 @@ ii str = case parseSexp str of
     Left e -> return $ Left e
     Right (s, rest) -> evalI [prims] $ eval s
     where
-    prims = map (\p@(Prim name _) -> (name, p))
-        [ Prim "p" $ Subr $ \vs -> do
+    prims = map (\(name, prim) -> (name, Prim name prim)) registerPrims
+    
+    registerPrims = flip execState [] list
+    subr name f = add (name, Subr f)
+    syntax name s = add (name, Syntax s)
+    add prim = modify (prim:)
+    list = do
+        subr "p" $ \vs -> do
             liftIO $ mapM_ print vs
             return $ U "print"
-        , Prim "begin" $ Syntax evalBegin
-        ]
+        
+        syntax "begin" evalBegin
+
