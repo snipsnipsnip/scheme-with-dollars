@@ -185,7 +185,7 @@ type Env = [Frame]
 addEnv frame env = frame : env
 findEnv name env = msum $ map (findFrame name) env
 
-newtype I a = I (ErrorT String (StateT Env IO) a) deriving (Monad, Functor)
+newtype I a = I (ErrorT String (StateT Env IO) a) deriving (Monad, Functor, MonadIO)
 
 withFrame :: Frame -> I a -> I a
 withFrame frame (I m) = I $ ErrorT $ withStateT (frame:) (runErrorT m)
@@ -205,9 +205,13 @@ evalI :: Env -> I a -> IO (Either String a)
 evalI env (I i) = evalStateT (runErrorT i) env
 
 ii :: I a -> IO (Either String a)
-ii = evalI prims
+ii = evalI [prims]
     where
-    prims = []
+    prims = map (\p@(Prim name _) -> (name, p))
+        [ Prim "print" $ \vs -> do
+            liftIO $ print vs
+            return $ U "print"
+        ]
 
 data V
     = S S
@@ -239,6 +243,8 @@ apply (F env argnames f) args = do
         withFrame (makeFrame $ zip argnames args) $ do
             e <- I get
             evalBegin f
+apply (Prim _ p) args = do
+    p args
 apply (S s) _ = fail $ "can't apply " ++ show s
 
 evalBegin :: [S] -> I V
