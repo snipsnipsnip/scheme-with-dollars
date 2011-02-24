@@ -298,10 +298,13 @@ evalLambda (argspec:body) = do
         L names -> do
             let args = [name | A (Sym name) <- names]
             unless (length args == length names) $ do
-                fail $ "syntax error"
+                fail $ "invalid arg spec"
             env <- I get
             return $ F env (Left args) body
-
+        A (Sym name) -> do
+            env <- I get
+            return $ F env (Right name) body
+        _ -> fail "invalid arg spec"
 
 ----
 
