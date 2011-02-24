@@ -113,6 +113,7 @@ data Atom
     = Str String
     | Sym String
     | Num Double
+    | Bool Bool
     deriving Eq
 
 showRoundList :: [ShowS] -> ShowS
@@ -131,6 +132,8 @@ instance Show Atom where
         Str s -> shows s
         Sym s -> showString s
         Num n -> shows n
+        Bool True -> showString "#t"
+        Bool False -> showString "#f"
 
 stringEscapable :: Char -> Char -> P String
 stringEscapable marker escape = paren marker marker $ many chr
@@ -154,11 +157,12 @@ sexp = ws *> sexp1
         where
         wrap s = L [A (Sym "quote"), s]
     
-    atom = fmap A $ num <|> str <|> sym
+    atom = fmap A $ num <|> str <|> sym <|> bool
         where
         num = fmap Num $ number <|> paren '<' '>' expr
         str = fmap Str $ stringEscapable '"' '\\'
         sym = fmap Sym $ name <|> stringEscapable '|' '\\'
+        bool = fmap Bool $ char '#' >> char 't' $> True <|> char 'f' $> False
         
         name = liftA2 (:) first (many rest)
         first = charExcept $ prohibited ++ "0123456789."
@@ -361,4 +365,5 @@ evalIf [cond, true, false] = do
         then eval true
         else eval false
 
+isTrue (S (A (Bool False))) = False
 isTrue _ = True
