@@ -169,7 +169,8 @@ sexp = ws *> sexp1
         sharp = char '#' >> true <|> false <|> chr
         true = char 't' $> Bool True
         false = char 'f' $> Bool False
-        chr = char '\\' *> fmap Chr anyChar
+        chr = char '\\' *> fmap Chr (special <|> anyChar)
+        special = mapM_ char "newline" $> '\n' <|> mapM_ char "space" $> ' '
         
         name = liftA2 (:) first (many rest)
         first = charExcept $ prohibited ++ ".#"
@@ -361,6 +362,11 @@ run code = case parseManySexp code of
             liftIO $ mapM_ print vs
             return $ U "print"
         
+        subr "+" $ evalNum (+) $ Left 0
+        subr "-" $ evalNum (-) $ Right negate
+        subr "*" $ evalNum (*) $ Left 1
+        subr "/" $ evalNum (/) $ Right recip
+        
         subr "<" $ evalCompare (<)
         subr ">" $ evalCompare (>)
         subr "<=" $ evalCompare (<=)
@@ -375,6 +381,16 @@ run code = case parseManySexp code of
         syntax "quote" $ \[e] -> return $ S e
         
         syntax "if" evalIf
+
+evalNum :: (Double -> Double -> Double) -> Either Double (Double -> Double) -> [V] -> I V
+evalNum _ (Left d) [] = return $ S $ A $ Num d
+evalNum _ (Right _) [] = fail "procedure requires at least one argument"
+evalNum _ (Left _) [n] = return n
+evalNum _ (Right op) [nv] = fmap (S . A . Num . op) $ unnum nv
+evalNum op _ xs = fmap (S . A . Num . foldl1 op) $ mapM unnum xs
+
+unnum (S (A (Num x))) = return x
+unnum x = fail $ "number expected, but got " ++ show x
 
 evalCompare op [S (A a), S (A b)] = do
     return $ S $ A $ Bool $ a `op` b
