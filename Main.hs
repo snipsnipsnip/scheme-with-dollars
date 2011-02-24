@@ -157,7 +157,7 @@ sexp = whitespace *> sexp1
         str = fmap Str $ stringEscapable '"' '\\'
         sym = fmap Sym $ name <|> stringEscapable '|' '\\'
         
-        name = liftA2 (:) first (some rest)
+        name = liftA2 (:) first (many rest)
         first = charExcept $ prohibited ++ "0123456789."
         rest = charExcept prohibited
         prohibited = " \t\n\\,'\"()<>[]|"
@@ -208,8 +208,8 @@ ii :: I a -> IO (Either String a)
 ii = evalI [prims]
     where
     prims = map (\p@(Prim name _) -> (name, p))
-        [ Prim "print" $ Subr $ \vs -> do
-            liftIO $ print vs
+        [ Prim "p" $ Subr $ \vs -> do
+            liftIO $ mapM_ print vs
             return $ U "print"
         , Prim "begin" $ Syntax evalBegin
         ]
