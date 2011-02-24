@@ -114,7 +114,7 @@ data Atom
     | Sym String
     | Num Double
     | Bool Bool
-    deriving Eq
+    deriving (Eq, Ord)
 
 showRoundList :: [ShowS] -> ShowS
 showRoundList list =
@@ -159,7 +159,7 @@ sexp = ws *> sexp1
     
     atom = fmap A $ num <|> str <|> sym <|> bool
         where
-        num = fmap Num $ number <|> paren '<' '>' expr
+        num = fmap Num $ number
         str = fmap Str $ stringEscapable '"' '\\'
         sym = fmap Sym $ name <|> stringEscapable '|' '\\'
         bool = fmap Bool $ char '#' >> char 't' $> True <|> char 'f' $> False
@@ -167,7 +167,7 @@ sexp = ws *> sexp1
         name = liftA2 (:) first (many rest)
         first = charExcept $ prohibited ++ "0123456789.#"
         rest = charExcept prohibited
-        prohibited = " \t\n\\,'\"()<>[]|"
+        prohibited = " \t\n\\,'\"()[]|"
     
     list = fmap L $ paren '(' ')' $ do
         ws
@@ -346,12 +346,23 @@ ii str = case parseManySexp str of
             liftIO $ mapM_ print vs
             return $ U "print"
         
+        subr "<" $ evalCompare (<)
+        subr ">" $ evalCompare (>)
+        subr "<=" $ evalCompare (<=)
+        subr ">=" $ evalCompare (>=)
+        subr "==" $ evalCompare (==)
+        subr "=" $ evalCompare (==)
+        
         syntax "begin" evalBegin
         syntax "define" evalDefine
         syntax "lambda" evalLambda
+        syntax "^" evalLambda
         syntax "quote" $ \[e] -> return $ S e
         
         syntax "if" evalIf
+
+evalCompare op [S (A a), S (A b)] = do
+    return $ S $ A $ Bool $ a `op` b
 
 evalIf [cond, true] = do
     result <- eval cond
