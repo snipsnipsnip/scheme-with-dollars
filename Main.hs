@@ -116,9 +116,13 @@ data Atom
     | Num Double
     deriving Eq
 
+showRoundList :: [ShowS] -> ShowS
+showRoundList list =
+    showParen True $ foldl (.) id $ intersperse (showChar ' ') list
+
 instance Show S where
     showsPrec _ s = case s of
-        L list -> showParen True $ foldl (.) id $ intersperse (showChar ' ') $ map shows list
+        L list -> showRoundList $ map shows list
         Q s -> showChar '\'' . shows s
         A a -> shows a
 
@@ -201,12 +205,22 @@ evalI :: Env -> I a -> IO (Either String a)
 evalI env (I i) = evalStateT (runErrorT i) env
 
 ii :: I a -> IO (Either String a)
-ii = evalI []
+ii = evalI prims
+    where
+    prims = []
 
 data V
     = S S
     | U String
     | F Env [String] [S]
+    | Prim String ([V] -> I V)
+
+instance Show V where
+    showsPrec _ v = case v of
+        S s -> shows s
+        U s -> showString "#<undef: " . showString s . showChar '>'
+        F env args body -> showString "#<func " . showRoundList (map showString args) . showChar '>'
+        Prim name _ -> showString "#<prim: " . showString name . showChar '>'
 
 eval :: S -> I V
 eval (Q s) = return $ S s
