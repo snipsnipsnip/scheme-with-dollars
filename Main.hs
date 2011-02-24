@@ -5,6 +5,7 @@ import Control.Monad.Error
 import Control.Monad.Reader
 import Control.Applicative
 import List
+import IO
 
 newtype P a = P (StateT String (Either String) a)
     deriving (Monad, Functor)
@@ -330,8 +331,20 @@ evalLambda (argspec:body) = do
 
 ----
 
+
+
+load :: FilePath -> IO (Either String V)
+load file = do
+    parsed <- bracket (openFile file ReadMode) hClose $ \h -> do
+      contents <- hGetContents h
+      return $ parseManySexp contents
+    run parsed
+
 ii :: String -> IO (Either String V)
-ii str = case parseManySexp str of
+ii = run . parseManySexp
+
+run :: Either String ([S], String) -> IO (Either String V)
+run result = case result of
     Left e -> return $ Left $ "Parse error:" ++ e
     Right (s, _) -> evalI [prims] $ evalBegin s
     where
