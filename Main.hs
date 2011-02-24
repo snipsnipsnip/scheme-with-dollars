@@ -204,16 +204,6 @@ runI env (I i) = runStateT (runErrorT i) env
 evalI :: Env -> I a -> IO (Either String a)
 evalI env (I i) = evalStateT (runErrorT i) env
 
-ii :: I a -> IO (Either String a)
-ii = evalI [prims]
-    where
-    prims = map (\p@(Prim name _) -> (name, p))
-        [ Prim "p" $ Subr $ \vs -> do
-            liftIO $ mapM_ print vs
-            return $ U "print"
-        , Prim "begin" $ Syntax evalBegin
-        ]
-
 data V
     = S S
     | U String
@@ -267,3 +257,15 @@ evalBegin :: [S] -> I V
 evalBegin [] = return $ U "empty begin"
 evalBegin [s] = eval s
 evalBegin (s:ss) = eval s >> evalBegin ss
+
+----
+
+ii :: I a -> IO (Either String a)
+ii = evalI [prims]
+    where
+    prims = map (\p@(Prim name _) -> (name, p))
+        [ Prim "p" $ Subr $ \vs -> do
+            liftIO $ mapM_ print vs
+            return $ U "print"
+        , Prim "begin" $ Syntax evalBegin
+        ]
