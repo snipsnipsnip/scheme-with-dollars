@@ -174,6 +174,7 @@ instance Read S where
 
 type Frame = [(String, V)]
 addFrame name value frame = (name, value) : frame
+makeFrame kvs = kvs :: Frame
 findFrame name frame = lookup name frame
 
 type Env = [Frame]
@@ -184,6 +185,9 @@ newtype I a = I (ErrorT String (StateT Env IO) a) deriving (Monad, Functor)
 
 withFrame :: Frame -> I a -> I a
 withFrame frame (I m) = I $ ErrorT $ withStateT (frame:) (runErrorT m)
+
+withEnv :: Env -> I a -> I a
+withEnv env (I m) = I $ ErrorT $ withStateT (const env) (runErrorT m)
 
 lookupName :: String -> I V
 lookupName name = I $ do
@@ -217,5 +221,13 @@ eval s = return $ S s
 apply :: V -> [V] -> I V
 apply (U m) _ = fail $ ($ "") $ showString "can't apply undefined: "  . shows m
 apply (F env argnames f) args = do
-    return $ S $ A $ Sym "eval'd"
+    withEnv env $ do
+        withFrame (makeFrame $ zip argnames args) $ do
+            e <- I get
+            evalBegin f
 apply (S s) _ = fail $ ($ "") $ showString "can't apply "  . shows s
+
+evalBegin :: [S] -> I V
+evalBegin [] = return $ U "empty begin"
+evalBegin [s] = eval s
+evalBegin (s:ss) = eval s >> evalBegin ss
