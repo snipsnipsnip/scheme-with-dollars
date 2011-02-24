@@ -346,3 +346,19 @@ ii str = case parseManySexp str of
         syntax "define" evalDefine
         syntax "lambda" evalLambda
         syntax "quote" $ \[e] -> return $ S e
+        
+        syntax "if" evalIf
+
+evalIf [cond, true] = do
+    result <- eval cond
+    if isTrue result
+        then eval true
+        else return $ U "else"
+
+evalIf [cond, true, false] = do
+    result <- eval cond
+    if isTrue result
+        then eval true
+        else eval false
+
+isTrue _ = True
