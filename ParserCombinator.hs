@@ -9,6 +9,9 @@ module ParserCombinator
 , paren
 , runP
 , evalP
+, eatUntil
+, escapableString
+, getCaret
 , module Control.Applicative
 , module Control.Monad
 ) where
@@ -18,7 +21,7 @@ import Control.Monad.State
 import Control.Monad.Error
 import Control.Applicative
 
-newtype P a = P (StateT String (Either String) a)
+newtype P a = P (StateT (String, Int, Int) (Either String) a)
     deriving (Monad, Functor)
 
 instance Applicative P where
@@ -33,18 +36,25 @@ instance MonadPlus P where
     mzero = empty
     mplus = (<|>)
 
+getCaret :: P (Int, Int)
+getCaret = P $ gets (\(_, caret, line) -> (caret, line))
+
 runP :: P a -> String -> Either String (a, String)
-runP (P p) s = runStateT p s
+runP (P p) s = fmap cut $ runStateT p (s, 0, 0)
+    where
+    cut (a,(s,_,_)) = (a, s)
 
 evalP :: P a -> String -> Either String a
 evalP p s = fmap fst $ runP p s
 
 anyChar :: P Char
 anyChar = P $ do
-    s <- get
-    case s of
+    (str, caret, line) <- get
+    case str of
         d:s -> do
-            put s
+            put $ case d of
+                '\n' -> (s, 0, line + 1)
+                _ -> (s, caret + 1, line)
             return d
         _ -> do
             fail "eof"
@@ -85,3 +95,21 @@ neg a = a *> empty <|> pure ()
 
 paren :: Char -> Char -> P a -> P a
 paren open close p = char open *> p <* char close
+
+eatUntil :: String -> P ()
+eatUntil str = loop str
+    where
+    loop "" = return ()
+    loop (c:cs) = do
+        d <- anyChar
+        if c == d then loop cs else loop str
+
+escapableString :: Char -> Char -> P String
+escapableString marker escape = paren marker marker $ many chr
+    where
+    chr = quotedChr <|> normalChr
+    normalChr = charExcept [marker]
+    quotedChr = fmap special $ char escape *> anyChar
+    special 'n' = '\n'
+    special 't' = '\t'
+    special c = c
