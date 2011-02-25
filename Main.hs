@@ -5,6 +5,7 @@ import Control.Monad.Cont
 import Control.Applicative
 import List
 import IO
+import Directory
 import SexpParser
 import Interpreter
 
@@ -15,7 +16,12 @@ load file = do
       run contents
 
 repl :: IO ()
-repl = loop [prims] $ \env -> do
+repl = do
+    b <- doesFileExist "boot.scm"
+    env <- if b
+        then fmap snd $ load "boot.scm"
+        else return [prims]
+    loop env $ \env -> do
     do
         putStr "> "
         line <- getLine
@@ -53,9 +59,19 @@ prims = flip execState [] list
     add name prim = modify ((name, Prim name prim):)
     
     list = do
+        syntax "begin" evalBegin
+        syntax "define" evalDefine
+        syntax "lambda" evalLambda
+        syntax "quote" $ \[e] -> return $ sToV e
+        syntax "let" evalLet
+        syntax "if" evalIf
+        
         subr "print" $ \vs -> do
             liftIO $ mapM_ print vs
             return $ U "print"
+        
+        alias "p" "print"
+        alias "^" "lambda"
         
         subr "+" $ evalNum (+) $ Left 0
         subr "-" $ evalNum (-) $ Right negate
@@ -67,17 +83,32 @@ prims = flip execState [] list
         subr "<=" $ evalCompare (<=)
         subr ">=" $ evalCompare (>=)
         subr "==" $ evalCompare (==)
-        subr "=" $ evalCompare (==)
+        alias "=" "=="
         
-        syntax "begin" evalBegin
-        syntax "define" evalDefine
-        syntax "lambda" evalLambda
-        syntax "quote" $ \[e] -> return $ sToV e
-        syntax "let" evalLet
-        syntax "if" evalIf
+        subr "car" $ \[L (x:_)] -> return x
+        subr "cdr" $ \[L (_:xs)] -> return $ L xs
+        subr "cons" $ \[x, L xs] -> return $ L (x:xs)
+        subr "null" $ \[L xs] -> return $ A $ Bool $ case xs of
+            [] -> True
+            _ -> False
         
-        alias "p" "print"
-        alias "^" "lambda"
+        let io f vs = liftIO $ do
+            f vs `catch` \e -> do
+                return $ U $ "io error: " ++ show e
+        
+        subr "pwd" $ io $ \[] -> do
+            fmap (A . Str) getCurrentDirectory
+        
+        subr "chdir" $ io $ \[A (Str path)] -> do
+            setCurrentDirectory path
+            return $ U "chdir"
+
+        subr "ls" $ io $ \[] -> do
+            fmap (L . map (A . Str)) $ getDirectoryContents "."
+
+        subr "mv" $ io $ \[A (Str from), A (Str to)] -> do
+            renameFile from to
+            return $ U "mv"
 
 evalDefine [S (Left (Sym name)), exp] = do
     val <- eval exp
