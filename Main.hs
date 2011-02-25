@@ -91,6 +91,8 @@ prims = flip execState [] list
         subr "null" $ \[L xs] -> return $ A $ Bool $ case xs of
             [] -> True
             _ -> False
+        subr "apply" $ \[f, L xs] -> do
+            evalApply f xs
         
         let io f vs = liftIO $ do
             f vs `catch` \e -> do

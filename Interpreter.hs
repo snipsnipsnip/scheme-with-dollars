@@ -14,6 +14,7 @@ module Interpreter
 , setEnv
 , eval
 , apply
+, evalApply
 , evalBegin
 , evalLambda
 ) where
@@ -103,25 +104,30 @@ sandbox m = StateT $ \s -> do
     return (a, s)
 
 apply :: V -> [S] -> I V
-apply (U m) _ = fail $ "can't apply undefined: " ++ show m
-apply v@(F env argspec f) args = do
+apply (Prim _ (Syntax s)) args = do
+    s args
+apply v args = do
     values <- mapM eval args
+    evalApply v values
+
+evalApply :: V -> [V] -> I V
+evalApply (Prim _ (Subr s)) values = do
+    s values
+evalApply v@(F env argspec f) values = do
     mapI sandbox $ do
-        I $ put $ flip addEnv env $ makeFrame $ bind argspec values
+        frame <- bind argspec values
+        I $ put $ flip addEnv env $ makeFrame frame
         evalBegin f
     where
-    bind (Left argnames) values = zip argnames values
-    bind (Right argname) values = [(argname, L values)]
-apply (Prim _ p) args = applyPrim p args
-apply (A a) _ = fail $ "can't apply " ++ show a
-apply (L l) _ = fail $ "can't apply " ++ show l
-
-applyPrim :: Prim -> [S] -> I V
-applyPrim (Subr s) args = do
-    values <- mapM eval args
-    s values
-applyPrim (Syntax s) args = do
-    s args
+    bind (Left argnames) values
+        | arity == passed = return $ zip argnames values
+        | otherwise = fail $ show arity ++ " arguments expected, but got " ++ show passed ++ " for " ++ show v
+        where
+        arity = length argnames
+        passed = length values
+    bind (Right argname) values = do
+        return [(argname, L values)]
+evalApply v _ = fail $ "can't apply " ++ show v
 
 evalBegin :: [S] -> I V
 evalBegin [] = return $ U "empty begin"
