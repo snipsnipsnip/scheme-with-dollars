@@ -4,10 +4,11 @@ import Control.Monad.Error
 import Control.Monad.Cont
 import Control.Applicative
 import List
-import IO
+import IO hiding (try)
 import Directory
 import SexpParser
 import Interpreter
+import Control.Exception (try, evaluate, PatternMatchFail (..))
 
 load :: FilePath -> IO (V, Env)
 load file = do
@@ -52,11 +53,18 @@ runEI env code = case parseManySexp code of
 prims :: Frame
 prims = flip execState [] list
     where
-    subr name f = add name (Subr f)
-    syntax name s = add name (Syntax s)
-    alias name n = modify $ \dict ->
-        let Just prim = lookup n dict in (name, prim) : dict
-    add name prim = modify ((name, Prim name prim):)
+    alias name n = modify addAlias
+        where
+        addAlias dict = let Just prim = lookup n dict in (name, prim) : dict
+    add typ name f = modify ((name, Prim name $ typ $ wrap f):)
+        where
+        wrap f vs = do
+            e <- liftIO $ try $ evaluate $ f vs
+            either err id e
+        err (PatternMatchFail _) = do
+            fail $ "argument error: " ++ name
+    subr = add Subr
+    syntax = add Syntax
     
     list = do
         syntax "begin" evalBegin
@@ -88,11 +96,8 @@ prims = flip execState [] list
         subr "car" $ \[L (x:_)] -> return x
         subr "cdr" $ \[L (_:xs)] -> return $ L xs
         subr "cons" $ \[x, L xs] -> return $ L (x:xs)
-        subr "null" $ \[L xs] -> return $ A $ Bool $ case xs of
-            [] -> True
-            _ -> False
-        subr "apply" $ \[f, L xs] -> do
-            evalApply f xs
+        subr "null" $ \[L xs] -> return $ A $ Bool $ null xs
+        subr "apply" $ \[f, L xs] -> evalApply f xs
         
         let io f vs = liftIO $ do
             f vs `catch` \e -> do
