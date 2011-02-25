@@ -116,6 +116,13 @@ evalDefine [S (Left (Sym name)), exp] = do
     setEnv $ defineEnv name val env
     return $ U $ "defined '" ++ name ++ "'"
 
+evalDefine (S (Right (S (Left (Sym name)):argspec)):body) = do
+    val <- evalLambda (S (Right argspec):body)
+    env <- getEnv
+    setEnv $ defineEnv name val env
+    return $ U $ "defined proc '" ++ name ++ "'"
+evalDefine _ = fail "malformed define"
+
 defineEnv :: String -> V -> Env -> Env
 defineEnv name value [] = [makeFrame [(name, value)]]
 defineEnv name value (f:fs) = addFrame name value f : fs
