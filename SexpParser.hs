@@ -25,7 +25,8 @@ showRoundList list =
     showParen True $ foldl (.) id $ intersperse (showChar ' ') list
 
 instance Show S where
-    showsPrec _ (S s) = either shows shows s
+    showsPrec _ (S (Left a)) = shows a
+    showsPrec _ (S (Right l)) = shows l
     showList [S (Left (Sym "quote")), s] = showChar '\'' . shows s
     showList list = showRoundList $ map shows list
 
@@ -98,7 +99,7 @@ parseSexp :: String -> Either String (S, String)
 parseSexp = runP sexp
 
 parseManySexp :: String -> Either String ([S], String)
-parseManySexp = runP (many sexp)
+parseManySexp = runP (some sexp)
 
 instance Read S where
     readsPrec _ str = case parseSexp str of

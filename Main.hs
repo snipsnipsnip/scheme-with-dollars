@@ -9,11 +9,11 @@ import List
 import IO
 import SexpParser
 
-newtype I a = I (ErrorT String (StateT Env (ContT V IO)) a)
+newtype I a = I (ErrorT String (StateT Env (ContT (V, Env) IO)) a)
     deriving (Monad, Functor, MonadIO, MonadCont)
 
-runI :: Env -> I V -> IO V
-runI env (I i) = runContT (evalStateT (fmap coerceError $ runErrorT i) env) return
+runI :: Env -> I V -> IO (V, Env)
+runI env (I i) = flip runContT return $ flip runStateT env $ fmap coerceError $ runErrorT i
     where
     coerceError (Left msg) = U $ "error: " ++ msg
     coerceError (Right v) = v
@@ -54,7 +54,7 @@ instance Show V where
     showsPrec _ v = case v of
         A a -> shows a
         L l -> showRoundList (map shows l)
-        U s -> val "undef" $ showString s
+        U s -> val "@" $ showString s
         F env argspec body -> val "func" $ case argspec of
             Left args -> showRoundList (map showString args)
             Right arg -> showString arg
@@ -128,36 +128,39 @@ evalLambda (S argspec:body) = case argspec of
 
 ----
 
-load :: FilePath -> IO V
+load :: FilePath -> IO (V, Env)
 load file = do
     bracket (openFile file ReadMode) hClose $ \h -> do
       contents <- hGetContents h
       run contents
 
-runRepl = loop $ do
+repl :: IO ()
+repl = loop [prims] $ \env -> do
     do
         putStr "> "
         line <- getLine
-        result <- run line
+        (result, env) <- runEI env line
         print result
-        return True
+        return $ Just env
     `catch` \e -> do
         unless (isEOFError e) (printError e)
-        return $ isUserError e
+        return $ do
+            guard $ isUserError e
+            return env
     where
     printError e = do
         putStr "error: "
         print e
-    loop m = do
-        b <- m
-        when b (loop m)
+    loop v m = do
+        mv <- m v
+        maybe (return ()) (flip loop m)  mv
 
-run :: String -> IO V
+run :: String -> IO (V, Env)
 run =  runEI [prims]
 
-runEI :: Env -> String -> IO V
+runEI :: Env -> String -> IO (V, Env)
 runEI env code = case parseManySexp code of
-    Left e -> return $ U $ "Parse error:" ++ e
+    Left e -> return (U $ "Parse error: " ++ e, env)
     Right (s, _) -> runI env $ evalBegin s
 
 prims :: Frame
