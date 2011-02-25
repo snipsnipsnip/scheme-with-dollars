@@ -40,7 +40,17 @@ instance (Monad m, Alternative m) => Alternative (StateT s m) where
 ---
 
 newtype P a = P (StateT (String, Int, Int) (Either String) a)
-    deriving (Monad, Functor)
+    deriving (Functor)
+
+instance Monad P where
+    P a >>= b = P $ do
+        r <- a
+        let P s = b r
+        s
+    return a = P $ return a
+    fail err = P $ do
+        (_, pos, line) <- get
+        fail $ err ++ " at line " ++ show line ++ ", pos " ++ show pos
 
 instance Applicative P where
     pure = return
