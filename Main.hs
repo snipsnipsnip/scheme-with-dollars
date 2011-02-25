@@ -53,6 +53,7 @@ data Prim
 instance Show V where
     showsPrec _ v = case v of
         A a -> shows a
+        L [A (Sym "quote"), s] = showChar '\'' . shows s
         L l -> showRoundList (map shows l)
         U s -> val "@" $ showString s
         F env argspec body -> val "func" $ case argspec of
