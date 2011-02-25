@@ -6,7 +6,7 @@ module ExprParser
 
 import ParserCombinator
 
-expr :: P Double
+expr :: MonadParser p => p Double
 expr = summ
     where
     summ = fmap sum $ liftA2 (:) prod $ many $ do
@@ -21,13 +21,18 @@ expr = summ
         whitespace
         number <|> paren '(' ')' (expr <* whitespace)
 
-whitechar = msum $ map char " \t\n"
+whitechar :: MonadParser p => p Char
+whitechar = asum $ map char " \t\n"
+
+whitespace :: MonadParser p => p String
 whitespace = many whitechar
+
+whitespace1 :: MonadParser p => p String
 whitespace1 = some whitechar
 
-number :: P Double
+number :: MonadParser p => p Double
 number = do
-    fmap read $ some $ msum $ map char ['0'..'9']
+    fmap read $ some $ asum $ map char ['0'..'9']
 
 test :: Bool
 test = runP expr "1 + 1 * (6/9 )* 3 + 4" == Right (7, "")

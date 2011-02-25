@@ -2,16 +2,16 @@
 
 module ParserCombinator
 ( P ()
-, anyChar
+, MonadParser (..)
 , char
 , charExcept
 , ($>)
+, asum
 , paren
 , runP
 , evalP
 , eatUntil
 , escapableString
-, getCaret
 , module Control.Applicative
 , module Control.Monad
 ) where
@@ -21,6 +21,24 @@ import Control.Monad.State
 import Control.Monad.Error
 import Control.Applicative
 
+class (Monad p, Applicative p, Alternative p) => MonadParser p where
+    anyChar :: p Char
+    getCaret :: p (Int, Int)
+
+instance MonadParser p => MonadParser (StateT s p) where
+    anyChar = lift anyChar
+    getCaret = lift getCaret
+
+instance Monad m => Applicative (StateT s m) where
+    pure = return
+    (<*>) = ap
+
+instance (Monad m, Alternative m) => Alternative (StateT s m) where
+    empty = StateT $ \_ -> empty
+    StateT a <|> StateT b = StateT $ \s -> a s <|> b s
+
+---
+
 newtype P a = P (StateT (String, Int, Int) (Either String) a)
     deriving (Monad, Functor)
 
@@ -29,15 +47,16 @@ instance Applicative P where
     (<*>) = ap
 
 instance Alternative P where
-    empty = fail "empty"
+    empty = fail "P: empty"
     P a <|> P b = P $ a `catchError` const b
 
 instance MonadPlus P where
     mzero = empty
     mplus = (<|>)
 
-getCaret :: P (Int, Int)
-getCaret = P $ gets (\(_, caret, line) -> (caret, line))
+instance MonadParser P where
+    getCaret = P $ gets (\(_, caret, line) -> (caret, line))
+    anyChar = anyCharP
 
 runP :: P a -> String -> Either String (a, String)
 runP (P p) s = fmap cut $ runStateT p (s, 0, 0)
@@ -47,8 +66,8 @@ runP (P p) s = fmap cut $ runStateT p (s, 0, 0)
 evalP :: P a -> String -> Either String a
 evalP p s = fmap fst $ runP p s
 
-anyChar :: P Char
-anyChar = P $ do
+anyCharP :: P Char
+anyCharP = P $ do
     (str, caret, line) <- get
     case str of
         d:s -> do
@@ -59,7 +78,7 @@ anyChar = P $ do
         _ -> do
             fail "eof"
 
-char :: Char -> P Char
+char :: MonadParser p => Char -> p Char
 char c = do
     d <- anyChar
     unless (c == d) $ fail $ ($ "") $
@@ -69,7 +88,7 @@ char c = do
         showChar d
     return d
 
-charExcept :: String -> P Char
+charExcept :: MonadParser p => String -> p Char
 charExcept set = do
     c <- anyChar
     unless (c `notElem` set) $ fail $ ($ "") $
@@ -93,10 +112,10 @@ eitherToMaybe = either (const Nothing) Just
 neg :: Alternative f => f a -> f ()
 neg a = a *> empty <|> pure ()
 
-paren :: Char -> Char -> P a -> P a
+paren :: MonadParser p => Char -> Char -> p a -> p a
 paren open close p = char open *> p <* char close
 
-eatUntil :: String -> P ()
+eatUntil :: MonadParser p => String -> p ()
 eatUntil str = loop str
     where
     loop "" = return ()
@@ -104,7 +123,7 @@ eatUntil str = loop str
         d <- anyChar
         if c == d then loop cs else loop str
 
-escapableString :: Char -> Char -> P String
+escapableString :: MonadParser p => Char -> Char -> p String
 escapableString marker escape = paren marker marker $ many chr
     where
     chr = quotedChr <|> normalChr
@@ -113,3 +132,6 @@ escapableString marker escape = paren marker marker $ many chr
     special 'n' = '\n'
     special 't' = '\t'
     special c = c
+
+asum :: Alternative f => [f a] -> f a
+asum = foldl (<|>) empty

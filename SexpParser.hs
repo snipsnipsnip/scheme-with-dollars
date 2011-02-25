@@ -4,6 +4,9 @@ module SexpParser
 , showRoundList
 , parseSexp
 , parseManySexp
+, parseAtom
+, parseList
+, sexp
 ) where
 
 import ExprParser
@@ -11,6 +14,7 @@ import ParserCombinator
 import List
 
 newtype S = S (Either Atom [S])
+    deriving (Eq)
 
 data Atom
     = Str String
@@ -39,61 +43,53 @@ instance Show Atom where
         Bool True -> showString "#t"
         Bool False -> showString "#f"
 
-stringEscapable :: Char -> Char -> P String
-stringEscapable marker escape = paren marker marker $ many chr
-    where
-    chr = quotedChr <|> normalChr
-    normalChr = charExcept [marker]
-    quotedChr = fmap special $ char escape *> anyChar
-    special 'n' = '\n'
-    special 't' = '\t'
-    special c = c
-
-sexp :: P S
+sexp :: MonadParser p => p S
 sexp = ws *> sexp1
+
+sexp1 :: MonadParser p => p S
+sexp1 = fmap S (atom <|> quote <|> list)
     where
-    sexp1 = fmap S (atom <|> quote <|> list)
-    
     quote = fmap wrap $ do
         char '\''
         sexp
         where
         wrap s = Right [S $ Left $ Sym "quote", s]
     
-    atom = fmap Left $ str <|> sharp <|> num <|> sym 
-        where
-        num = fmap Num $ number
-        str = fmap Str $ stringEscapable '"' '\\'
-        sym = fmap Sym $ name <|> stringEscapable '|' '\\'
-        sharp = char '#' >> true <|> false <|> chr
-        true = char 't' $> Bool True
-        false = char 'f' $> Bool False
-        chr = char '\\' *> fmap Chr (special <|> anyChar)
-        special = mapM_ char "newline" $> '\n' <|> mapM_ char "space" $> ' '
-        
-        name = liftA2 (:) first (many rest)
-        first = charExcept $ prohibited ++ ".#"
-        rest = charExcept prohibited
-        prohibited = " \t\n\\,'\"()[]|"
+    atom = fmap Left parseAtom
     
-    list = fmap Right $ paren '(' ')' $ do
-        ws
-        list1 <* ws <|> pure []
-        where
-        list1 = do
-            liftA2 (:) sexp1 $ many $ ws1 *> sexp1
+    list = fmap Right parseList
     
-    ws = whitespace >> comment >> whitespace
-    ws1 = whitespace1 >> comment >> whitespace
+ws, ws1, wsaft :: MonadParser p => p ()
+ws = whitespace >> wsaft
+ws1 = whitespace1 >> wsaft
+wsaft = comment >> whitespace $> ()
+    where
     comment = mapM_ char "#|" *> eatUntil "|#" <|> return ()
 
-eatUntil :: String -> P ()
-eatUntil str = loop str
+parseAtom :: MonadParser p => p Atom
+parseAtom = str <|> sharp <|> num <|> sym 
     where
-    loop "" = return ()
-    loop (c:cs) = do
-        d <- anyChar
-        if c == d then loop cs else loop str
+    num = fmap Num $ number
+    str = fmap Str $ escapableString '"' '\\'
+    sym = fmap Sym $ name <|> escapableString '|' '\\'
+    sharp = char '#' >> true <|> false <|> chr
+    true = char 't' $> Bool True
+    false = char 'f' $> Bool False
+    chr = char '\\' *> fmap Chr (special <|> anyChar)
+    special = mapM_ char "newline" $> '\n' <|> mapM_ char "space" $> ' '
+    
+    name = liftA2 (:) first (many rest)
+    first = charExcept $ prohibited ++ ".#"
+    rest = charExcept prohibited
+    prohibited = " \t\n\\,'\"()[]|"
+
+parseList :: MonadParser p => p [S]
+parseList = paren '(' ')' $ do
+    ws
+    list1 <* ws <|> pure []
+    where
+    list1 = do
+        liftA2 (:) sexp1 $ many $ ws1 *> sexp1
 
 parseSexp :: String -> Either String (S, String)
 parseSexp = runP sexp
