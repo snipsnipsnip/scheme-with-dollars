@@ -1,5 +1,3 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE GADTs #-}
 
 import Control.Monad.State
 import Control.Monad.Error
@@ -8,126 +6,7 @@ import Control.Applicative
 import List
 import IO
 import SexpParser
-
-newtype I a = I (ErrorT String (StateT Env (ContT (V, Env) IO)) a)
-    deriving (Monad, Functor, MonadIO, MonadCont)
-
-runI :: Env -> I V -> IO (V, Env)
-runI env (I i) = flip runContT return $ flip runStateT env $ fmap coerceError $ runErrorT i
-    where
-    coerceError (Left msg) = U $ "error: " ++ msg
-    coerceError (Right v) = v
-
-type Frame = [(String, V)]
-addFrame name value frame = (name, value) : frame
-makeFrame kvs = kvs :: Frame
-findFrame name frame = lookup name frame
-
-type Env = [Frame]
-addEnv frame env = frame : env
-findEnv name env = msum $ map (findFrame name) env
-
-defineEnv :: String -> V -> Env -> Env
-defineEnv name value [] = [makeFrame [(name, value)]]
-defineEnv name value (f:fs) = addFrame name value f : fs
-
-showEnv :: Env -> String
-showEnv e = showRoundList (map (showRoundList . map (showString . fst)) e) ""
-
-lookupName :: String -> I V
-lookupName name = I $ do
-    r <- gets $ findEnv name
-    maybe (fail $ "variable |" ++ name ++ "| not found") return r
-
-data V
-    = A Atom
-    | L [V]
-    | U String
-    | F Env (Either [String] String) [S]
-    | Prim String Prim
-
-data Prim
-    = Subr ([V] -> I V)
-    | Syntax ([S] -> I V)
-
-instance Show V where
-    showsPrec _ v = case v of
-        A a -> shows a
-        L [A (Sym "quote"), s] -> showChar '\'' . shows s
-        L l -> showRoundList (map shows l)
-        U s -> val "@" $ showString s
-        F env argspec body -> val "func" $ case argspec of
-            Left args -> showRoundList (map showString args)
-            Right arg -> showString arg
-        Prim name prim -> val (primName prim) $ showString name
-        where
-        val name s = showString "#<" . showString name . showChar ' ' . s . showChar '>'
-        primName (Subr _) = "subr"
-        primName (Syntax _) = "syntax"
-
-eval :: S -> I V
-eval (S s) = case s of
-    Right [] -> return $ L []
-    Right (x:xs) -> do
-        x <- eval x
-        apply x xs
-    Left (Sym a) -> do
-        lookupName a
-    s@(Left a) -> return $ A a
-
-mapI f (I i) = I $ ErrorT $ f $ runErrorT i
-
-sandbox :: Monad m => StateT s m a -> StateT s m a
-sandbox m = StateT $ \s -> do
-    (a, _) <- runStateT m s
-    return (a, s)
-
-apply :: V -> [S] -> I V
-apply (U m) _ = fail $ "can't apply undefined: " ++ show m
-apply v@(F env argspec f) args = do
-    values <- mapM eval args
-    mapI sandbox $ do
-        I $ put $ flip addEnv env $ makeFrame $ bind argspec values
-        evalBegin f
-    where
-    bind (Left argnames) values = zip argnames values
-    bind (Right argname) values = [(argname, L values)]
-apply (Prim _ p) args = applyPrim p args
-apply (A a) _ = fail $ "can't apply " ++ show a
-apply (L l) _ = fail $ "can't apply " ++ show l
-
-applyPrim :: Prim -> [S] -> I V
-applyPrim (Subr s) args = do
-    values <- mapM eval args
-    s values
-applyPrim (Syntax s) args = do
-    s args
-
-evalBegin :: [S] -> I V
-evalBegin [] = return $ U "empty begin"
-evalBegin [s] = eval s
-evalBegin (s:ss) = eval s >> evalBegin ss
-
-evalDefine [S (Left (Sym name)), exp] = do
-    val <- eval exp
-    I $ modify $ defineEnv name val
-    return $ U $ "defined '" ++ name ++ "'"
-
-evalLambda :: [S] -> I V
-evalLambda (S argspec:body) = case argspec of
-    Right names -> do
-        args <- mapM getName names
-        env <- I get
-        return $ F env (Left args) body
-    Left (Sym name) -> do
-        env <- I get
-        return $ F env (Right name) body
-    _ -> fail "invalid arg spec"
-    where
-    getName (S (Left (Sym name))) = return name
-    getName _ = fail "invalid arg spec"
-
-----
+import Interpreter
 
 load :: FilePath -> IO (V, Env)
 load file = do
@@ -157,7 +36,7 @@ repl = loop [prims] $ \env -> do
         maybe (return ()) (flip loop m)  mv
 
 run :: String -> IO (V, Env)
-run =  runEI [prims]
+run = runEI [prims]
 
 runEI :: Env -> String -> IO (V, Env)
 runEI env code = case parseManySexp code of
@@ -172,6 +51,7 @@ prims = flip execState [] list
     alias name n = modify $ \dict ->
         let Just prim = lookup n dict in (name, prim) : dict
     add name prim = modify ((name, Prim name prim):)
+    
     list = do
         subr "print" $ \vs -> do
             liftIO $ mapM_ print vs
@@ -194,11 +74,20 @@ prims = flip execState [] list
         syntax "lambda" evalLambda
         syntax "quote" $ \[e] -> return $ sToV e
         syntax "let" evalLet
+        syntax "if" evalIf
         
         alias "p" "print"
         alias "^" "lambda"
-        
-        syntax "if" evalIf
+
+evalDefine [S (Left (Sym name)), exp] = do
+    val <- eval exp
+    env <- getEnv
+    setEnv $ defineEnv name val env
+    return $ U $ "defined '" ++ name ++ "'"
+
+defineEnv :: String -> V -> Env -> Env
+defineEnv name value [] = [makeFrame [(name, value)]]
+defineEnv name value (f:fs) = addFrame name value f : fs
 
 sToV :: S -> V
 sToV (S s) = case s of
@@ -238,7 +127,7 @@ isTrue _ = True
 
 evalLet (S (Right bindings):body) = do
     (vars, exps) <- fmap unzip $ mapM makePair bindings
-    env <- I get
+    env <- getEnv
     apply (F env (Left vars) body) exps
     where
     makePair (S (Right [S (Left (Sym name)), expr])) = return (name, expr)
