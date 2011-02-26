@@ -10,6 +10,7 @@ import ParserCombinator
 import Data.List
 import qualified Data.IntMap as I
 import SexpParser
+import Debug.Trace
 
 parseIndentedSexp :: String -> Either String (S, String)
 parseIndentedSexp = undefined
@@ -36,6 +37,7 @@ cToS cexp = evalState reduce [(-1, [])]
     reduce :: M [S]
     reduce = do
         mapM_ bag cexp
+        x <- get
         shiftTo (-1)
         [(-1, s)] <- get
         return s
@@ -50,14 +52,14 @@ cToS cexp = evalState reduce [(-1, [])]
             (Just atom, GT) -> shiftTo indent >> addAtom atom
             (Nothing, LT) -> unshift indent
             (Nothing, EQ) -> shift >> unshift indent
-            (Nothing, GT) -> shiftTo indent >> unshift indent
+            (Nothing, GT) -> shiftTo (indent - 1) >> unshift indent
         
     getLevel :: M Int
     getLevel = gets (fst . head)
 
     shift :: M ()
     shift = do
-        (_,list):(l,next):rest <- get
+        (r,list):(l,next):rest <- get
         put $ (l, S (Right $ reverse list):next) : rest
 
     unshift :: Int -> M ()
