@@ -36,7 +36,7 @@ cToS cexp = evalState reduce [(-1, [])]
         x <- get
         shiftTo (-1)
         [(-1, s)] <- get
-        return s
+        return $ reverse s
     
     bag :: (Int, Maybe S) -> M ()
     bag (indent, elem) = do
