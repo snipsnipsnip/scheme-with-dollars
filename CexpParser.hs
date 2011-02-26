@@ -30,8 +30,8 @@ cexp = many $ do
 
 type M a = State [(Int, [S])] a
 
-hmm :: Cexp -> [S]
-hmm cexp = evalState reduce [(-1, [])]
+cToS :: Cexp -> [S]
+cToS cexp = evalState reduce [(-1, [])]
     where
     reduce :: M [S]
     reduce = do
@@ -83,7 +83,7 @@ hoge = c
     where
     Right (c,_) = runP cexp $ intercalate "\n"
         [ ": define filter"
-        , "  : rec"
+        , "  : Y"
         , "    : ^ : filter"
         , "      : ^ : f xs"
         , "        : if : null xs"
@@ -93,6 +93,24 @@ hoge = c
         , "                   : filter f : cdr xs"
         , "            : filter f : cdr xs"
         ]
+
+fuga :: S
+fuga = s
+    where
+    Right (s, _) = parseSexp $ intercalate "\n"
+        [ "(define filter"
+        , "  (Y"
+        , "    (^ (filter)"
+        , "      (^ (f xs)"
+        , "        (if (null xs)"
+        , "          xs"
+        , "          (if (f (car xs))"
+        , "            (cons (car xs) (filter f (cdr xs)))"
+        , "            (filter f (cdr xs))))))))"
+        ]
+
+test :: Bool
+test = cToS hoge == [fuga]
 
 {-
 hmm cexp = runState (dive 0) cexp
