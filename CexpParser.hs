@@ -49,7 +49,7 @@ cToS cexp = evalState reduce [(-1, [])]
         case (elem, ord) of
             (Just atom, LT) -> addAtom atom
             (Just atom, EQ) -> shift >> addAtom atom
-            (Just atom, GT) -> shiftTo indent >> addAtom atom
+            (Just atom, GT) -> shiftTo (indent - 1) >> addAtom atom
             (Nothing, LT) -> unshift indent
             (Nothing, EQ) -> shift >> unshift indent
             (Nothing, GT) -> shiftTo (indent - 1) >> unshift indent
@@ -93,7 +93,7 @@ hoge = c
         , "          : if : f : car xs"
         , "            : cons : car xs"
         , "                   : filter f : cdr xs"
-        , "            : filter f : cdr xs"
+        , "            filter f : cdr xs"
         ]
 
 fuga :: S
