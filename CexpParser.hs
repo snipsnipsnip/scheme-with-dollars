@@ -1,7 +1,6 @@
 module CexpParser
 ( module SexpParser
-, parseIndentedSexp
-, parseManyIndentedSexp
+, parseManyCexp
 ) where
 
 import Control.Monad.State
@@ -12,21 +11,18 @@ import qualified Data.IntMap as I
 import SexpParser
 import Debug.Trace
 
-parseIndentedSexp :: String -> Either String (S, String)
-parseIndentedSexp = undefined
+parseManyCexp :: String -> Either String ([S], String)
+parseManyCexp = runP $ fmap cToS cexp
 
-parseManyIndentedSexp :: String -> Either String ([S], String)
-parseManyIndentedSexp = undefined
-
-type Cexp = [(Int, Maybe Atom)]
+type Cexp = [(Int, Maybe S)]
 
 cexp :: P Cexp
 cexp = many $ do
     whitespace
-    liftA2 (,) pos (colon <|> atom)
+    liftA2 (,) pos (colon <|> s)
     where
     colon = char ':' $> Nothing
-    atom = fmap Just parseAtom
+    s = fmap Just sexp
     pos = fmap fst getCaret
 
 type M a = State [(Int, [S])] a
@@ -42,14 +38,14 @@ cToS cexp = evalState reduce [(-1, [])]
         [(-1, s)] <- get
         return s
     
-    bag :: (Int, Maybe Atom) -> M ()
+    bag :: (Int, Maybe S) -> M ()
     bag (indent, elem) = do
         level <- getLevel
         let ord = compare level indent
         case (elem, ord) of
-            (Just atom, LT) -> addAtom atom
-            (Just atom, EQ) -> shift >> addAtom atom
-            (Just atom, GT) -> shiftTo (indent - 1) >> addAtom atom
+            (Just s, LT) -> add s
+            (Just s, EQ) -> shift >> add s
+            (Just s, GT) -> shiftTo (indent - 1) >> add s
             (Nothing, LT) -> unshift indent
             (Nothing, EQ) -> shift >> unshift indent
             (Nothing, GT) -> shiftTo (indent - 1) >> unshift indent
@@ -68,10 +64,10 @@ cToS cexp = evalState reduce [(-1, [])]
     shiftTo :: Int -> M ()
     shiftTo level = untilM (level <) getLevel shift
         
-    addAtom :: Atom -> M ()
-    addAtom atom = do
+    add :: S -> M ()
+    add s = do
         (l, list):rest <- get
-        put $ (l, S (Left atom):list):rest
+        put $ (l, s:list):rest
 
 untilM :: (Monad m) => (a -> Bool) -> m a -> m b -> m ()
 untilM pred var action = do
@@ -93,7 +89,7 @@ hoge = c
         , "          : if : f : car xs"
         , "            : cons : car xs"
         , "                   : filter f : cdr xs"
-        , "            filter f : cdr xs"
+        , "            : filter f : cdr xs"
         ]
 
 fuga :: S
