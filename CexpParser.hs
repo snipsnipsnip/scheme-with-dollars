@@ -7,7 +7,6 @@ import Control.Monad.State
 import ExprParser
 import ParserCombinator
 import Data.List
-import qualified Data.IntMap as I
 import SexpParser
 import Debug.Trace
 
@@ -16,7 +15,7 @@ parseManyCexp = runP $ fmap cToS cexp
 
 type Cexp = [(Int, Maybe S)]
 
-cexp :: P Cexp
+cexp :: MonadParser p => p Cexp
 cexp = many $ do
     whitespace
     liftA2 (,) pos (colon <|> s)

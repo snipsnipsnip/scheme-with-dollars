@@ -25,18 +25,6 @@ class (Monad p, Applicative p, Alternative p) => MonadParser p where
     anyChar :: p Char
     getCaret :: p (Int, Int)
 
-instance MonadParser p => MonadParser (StateT s p) where
-    anyChar = lift anyChar
-    getCaret = lift getCaret
-
-instance Monad m => Applicative (StateT s m) where
-    pure = return
-    (<*>) = ap
-
-instance (Monad m, Alternative m) => Alternative (StateT s m) where
-    empty = StateT $ \_ -> empty
-    StateT a <|> StateT b = StateT $ \s -> a s <|> b s
-
 ---
 
 newtype P a = P (StateT (String, Int, Int) (Either String) a)
@@ -50,7 +38,7 @@ instance Monad P where
     return a = P $ return a
     fail err = P $ do
         (_, pos, line) <- get
-        fail $ err ++ " at line " ++ show line ++ ", pos " ++ show pos
+        throwError $ err ++ " at line " ++ show line ++ ", pos " ++ show pos
 
 instance Applicative P where
     pure = return
@@ -86,7 +74,7 @@ anyCharP = P $ do
                 _ -> (s, caret + 1, line)
             return d
         _ -> do
-            fail "eof"
+            throwError "eof"
 
 char :: MonadParser p => Char -> p Char
 char c = do
