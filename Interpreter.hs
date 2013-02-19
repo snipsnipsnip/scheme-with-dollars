@@ -23,8 +23,8 @@ import Control.Monad.State
 import Control.Monad.Error
 import Control.Monad.Cont
 import Control.Applicative
-import List
-import IO
+import Data.List
+import System.IO
 import SexpParser
 
 newtype I a = I (ErrorT String (StateT Env (ContT (V, Env) IO)) a)

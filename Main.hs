@@ -3,12 +3,13 @@ import Control.Monad.State
 import Control.Monad.Error
 import Control.Monad.Cont
 import Control.Applicative
-import List
-import IO hiding (try)
-import Directory
-import SexpParser
+import Data.List
+import System.IO
+import System.Directory
+import CexpParser
 import Interpreter
-import Control.Exception (try, evaluate, PatternMatchFail (..))
+import Control.Exception (try, evaluate, PatternMatchFail (..), bracket)
+import System.IO.Error (isEOFError, isUserError)
 
 load :: FilePath -> IO (V, Env)
 load file = do
@@ -18,9 +19,9 @@ load file = do
 
 repl :: IO ()
 repl = do
-    b <- doesFileExist "boot.scm"
+    b <- doesFileExist "init.scm"
     env <- if b
-        then fmap snd $ load "boot.scm"
+        then fmap snd $ load "init.scm"
         else return [prims]
     loop env $ \env -> do
     do
@@ -46,7 +47,7 @@ run :: String -> IO (V, Env)
 run = runEI [prims]
 
 runEI :: Env -> String -> IO (V, Env)
-runEI env code = case parseManySexp code of
+runEI env code = case parseManyCexp code of
     Left e -> return (U $ "Parse error: " ++ e, env)
     Right (s, _) -> runI env $ evalBegin s
 

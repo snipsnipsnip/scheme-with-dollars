@@ -11,7 +11,7 @@ module SexpParser
 
 import ExprParser
 import ParserCombinator
-import List
+import Data.List
 
 newtype S = S (Either Atom [S])
     deriving (Eq)
