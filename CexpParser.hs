@@ -11,16 +11,16 @@ import SexpParser
 import Debug.Trace
 
 parseManyCexp :: String -> Either String ([S], String)
-parseManyCexp = runP $ fmap cToS cexp
+parseManyCexp = runP $ fmap cToS $ cexp $ char '$'
 
 type Cexp = [(Int, Maybe S)]
 
-cexp :: MonadParser p => p Cexp
-cexp = many $ do
+cexp :: MonadParser p => p a -> p Cexp
+cexp p = many $ do
     whitespace
     liftA2 (,) pos (colon <|> s)
     where
-    colon = char '$' $> Nothing
+    colon = p $> Nothing
     s = fmap Just sexp
     pos = fmap fst getCaret
 
@@ -78,7 +78,7 @@ untilM pred var action = do
 hoge :: Cexp
 hoge = c
     where
-    Right (c,_) = runP cexp $ intercalate "\n"
+    Right (c,_) = runP (cexp $ char ':') $ intercalate "\n"
         [ ": define filter"
         , "  : Y"
         , "    : ^ : filter"
