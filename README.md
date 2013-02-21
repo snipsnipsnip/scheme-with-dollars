@@ -1,4 +1,49 @@
-scheme-with-dollars
+scheme-with-dollars, or $cheme
 ===================
 
-scheme with dollars (or $cheme) is a toy interpreter of scheme programming language with Haskell like 'offside-rule' syntax
+(Be careful not to fall forward)
+
+This:
+
+```scheme
+(define Y
+  (lambda (f)
+    ((lambda (x)
+        (f (lambda (v)
+              ((x x)
+                v))))
+      (lambda (x)
+        (f (lambda (v)
+              ((x x)
+                v)))))))
+```
+
+becomes like this:
+
+```scheme
+(define Y
+  (lambda (f
+    ((lambda (x
+        (f (lambda (v
+              ((x x
+                v 
+      (lambda (x
+        (f (lambda (v
+              ((x x
+                v
+```
+
+or like this.
+
+```scheme
+$ define Y
+  $ lambda $ f
+    $ $ lambda $ x
+        $ f $ lambda $ v
+              $ $ x x
+                v 
+      $ lambda $ x
+        $ f $ lambda $ v
+              $ $ x x
+                v 
+```
