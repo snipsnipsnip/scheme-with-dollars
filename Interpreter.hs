@@ -8,6 +8,8 @@ module Interpreter
 , Env (..)
 , Frame (..)
 , Prim (..)
+, Subr
+, Syntax
 , makeFrame
 , addFrame
 , getEnv
@@ -68,8 +70,11 @@ data V
     | Prim String Prim
 
 data Prim
-    = Subr ([V] -> I V)
-    | Syntax ([S] -> I V)
+    = Subr Subr
+    | Syntax Syntax
+
+type Subr = [V] -> I V
+type Syntax = [S] -> I V
 
 instance Show V where
     showsPrec _ v = case v of
@@ -103,14 +108,14 @@ sandbox m = StateT $ \s -> do
     (a, _) <- runStateT m s
     return (a, s)
 
-apply :: V -> [S] -> I V
+apply :: V -> Syntax
 apply (Prim _ (Syntax s)) args = do
     s args
 apply v args = do
     values <- mapM eval args
     evalApply v values
 
-evalApply :: V -> [V] -> I V
+evalApply :: V -> Subr
 evalApply (Prim _ (Subr s)) values = do
     s values
 evalApply v@(F env argspec f) values = do
@@ -129,12 +134,12 @@ evalApply v@(F env argspec f) values = do
         return [(argname, L values)]
 evalApply v _ = fail $ "can't apply " ++ show v
 
-evalBegin :: [S] -> I V
+evalBegin :: Syntax
 evalBegin [] = return $ U "empty begin"
 evalBegin [s] = eval s
 evalBegin (s:ss) = eval s >> evalBegin ss
 
-evalLambda :: [S] -> I V
+evalLambda :: Syntax
 evalLambda (S argspec:body) = case argspec of
     Right names -> do
         args <- mapM getName names
