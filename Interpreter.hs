@@ -70,14 +70,18 @@ showEnv e = showRoundList (map (showRoundList . map (showString . fst)) e) ""
 lookupName :: String -> I V
 lookupName name = I $ do
     r <- gets $ findEnv name
-    maybe (fail $ "variable |" ++ name ++ "| not found") return r
+    maybe (fail $ "variable |" ++ name ++ "| not found") checkBottom r
+    where
+    checkBottom (Bottom msg) = fail msg
+    checkBottom v = return v
 
 data V
     = A Atom
     | L [V]
-    | U String
+    | U String -- undefined harmless value
     | F Env (Either [String] String) [S]
     | Prim String Prim
+    | Bottom String -- fails when applied
 
 data Prim
     = Subr Subr
@@ -96,6 +100,7 @@ instance Show V where
             Left args -> showRoundList (map showString args)
             Right arg -> showString arg
         Prim name prim -> val (primName prim) $ showString name
+        Bottom b -> val "bottom" $ showString b
         where
         val name s = showString "#<" . showString name . showChar ' ' . s . showChar '>'
         primName (Subr _) = "subr"
@@ -134,7 +139,7 @@ evalApply v@(F env argspec f) values = do
         passed = length values
     bind (Right argname) values = do
         return [(argname, L values)]
-evalApply v _ = fail $ "can't apply " ++ show v
+evalApply v _ = fail $ "non applicable value " ++ show v
 
 evalBegin :: Syntax
 evalBegin [] = return $ U "empty begin"
