@@ -94,7 +94,7 @@ eval (S s) = case s of
         apply x xs
     Left (Sym a) -> do
         lookupName a
-    s@(Left a) -> return $ A a
+    Left a -> return $ A a
 
 mapI f (I i) = I $ ErrorT $ f $ runErrorT i
 
@@ -138,12 +138,15 @@ evalLambda :: [S] -> I V
 evalLambda (S argspec:body) = case argspec of
     Right names -> do
         args <- mapM getName names
-        env <- I get
+        env <- getEnv
         return $ F env (Left args) body
     Left (Sym name) -> do
-        env <- I get
+        env <- getEnv
         return $ F env (Right name) body
     _ -> fail "invalid arg spec"
     where
     getName (S (Left (Sym name))) = return name
     getName _ = fail "invalid arg spec"
+
+evalLambda _ = fail $ "malformed lambda"
+
