@@ -20,7 +20,7 @@ cexp = many $ do
     whitespace
     liftA2 (,) pos (colon <|> s)
     where
-    colon = char ':' $> Nothing
+    colon = char '$' $> Nothing
     s = fmap Just sexp
     pos = fmap fst getCaret
 
