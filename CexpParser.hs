@@ -13,7 +13,8 @@ import Debug.Trace
 parseManyCexp :: String -> Either String ([S], String)
 parseManyCexp = runP $ fmap cToS $ cexp $ char '$'
 
-type Cexp = [(Int, Maybe S)]
+type Ctoken = (Int, Maybe S)
+type Cexp = [Ctoken]
 
 cexp :: MonadParser p => p a -> p Cexp
 cexp p = many $ do
@@ -37,7 +38,7 @@ cToS cexp = evalState reduce [(-1, [])]
         [(-1, s)] <- get
         return $ reverse s
     
-    bag :: (Int, Maybe S) -> M ()
+    bag :: Ctoken -> M ()
     bag (indent, elem) = do
         level <- getLevel
         let ord = compare level indent
