@@ -83,6 +83,10 @@ prims = flip execState [] list
         alias "p" "print"
         alias "^" "lambda"
         
+        syntax "and" $ evalLogic False
+        syntax "or" $ evalLogic True
+        subr "not" $ \[x] -> return $ A $ Bool $ not $ isTrue $ x
+        
         subr "+" $ evalNum (+) $ Left 0
         subr "-" $ evalNum (-) $ Right negate
         subr "*" $ evalNum (*) $ Left 1
@@ -145,7 +149,7 @@ sToV (S s) = case s of
     Left a -> A a
     Right ss -> L (map sToV ss)
 
-evalNum :: (Double -> Double -> Double) -> Either Double (Double -> Double) -> [V] -> I V
+evalNum :: (Double -> Double -> Double) -> Either Double (Double -> Double) -> Subr
 evalNum _ (Left d) [] = return $ A $ Num d
 evalNum _ (Right _) [] = fail $ "procedure requires at least one argument"
 evalNum _ (Left _) [n] = return n
@@ -155,11 +159,23 @@ evalNum op _ xs = fmap (A . Num . foldl1 op) $ mapM unnum xs
 unnum (A (Num x)) = return x
 unnum x = fail $ "number expected, but got " ++ show x
 
-evalCompare :: (Atom -> Atom -> Bool) -> [V] -> I V
+evalLogic :: Bool -> Syntax
+evalLogic b = loop
+  where
+  loop [] = return $ A $ Bool b
+  loop [x] = eval x
+  loop (x:xs) = do
+    v <- eval x
+    if isTrue v == b
+      then return v
+      else loop xs
+
+evalCompare :: (Atom -> Atom -> Bool) -> Subr
 evalCompare op [A a, A b] = do
     return $ A $ Bool $ a `op` b
-evalCompare _ _ = fail "2 args expected"
+evalCompare _ _ = fail "compare: 2 args expected"
 
+evalIf :: Syntax
 evalIf [cond, true] = do
     result <- eval cond
     if isTrue result
@@ -176,6 +192,7 @@ evalIf _ = fail "syntax error"
 isTrue (A (Bool False)) = False
 isTrue _ = True
 
+evalLet :: Syntax
 evalLet (S (Right bindings):body) = do
     (vars, exps) <- unzipLetlist bindings
     env <- getEnv
@@ -187,6 +204,7 @@ unzipLetlist bindings = fmap unzip $ mapM makePair bindings
     makePair (S (Right [S (Left (Sym name)), expr])) = return (name, expr)
     makePair _ = fail "syntax error"
 
+evalLetrec :: Syntax
 evalLetrec (S (Right bindings):body) = do
     (vars, exps) <- unzipLetlist bindings
     let newFrame = makeFrame [(v, Bottom $ "letrec dummy for " ++ v) | v <- vars]
