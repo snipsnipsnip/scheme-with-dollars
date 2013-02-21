@@ -12,6 +12,7 @@ module Interpreter
 , Syntax
 , makeFrame
 , addFrame
+, addEnv
 , getEnv
 , setEnv
 , withEnv
