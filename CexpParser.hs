@@ -41,14 +41,14 @@ cToS cexp = evalState reduce [(-1, [])]
     bag :: Ctoken -> M ()
     bag (indent, elem) = do
         level <- getLevel
-        let ord = compare level indent
+        let ord = compare indent level
         case (elem, ord) of
-            (Just s, LT) -> add s
+            (Just s, GT) -> add s
             (Just s, EQ) -> shift >> add s
-            (Just s, GT) -> shiftTo (indent - 1) >> add s
-            (Nothing, LT) -> unshift indent
+            (Just s, LT) -> shiftTo (indent - 1) >> add s
+            (Nothing, GT) -> unshift indent
             (Nothing, EQ) -> shift >> unshift indent
-            (Nothing, GT) -> shiftTo (indent - 1) >> unshift indent
+            (Nothing, LT) -> shiftTo (indent - 1) >> unshift indent
         
     getLevel :: M Int
     getLevel = gets (fst . head)
