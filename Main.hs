@@ -73,6 +73,7 @@ prims = flip execState [] list
         syntax "lambda" evalLambda
         syntax "quote" $ \[e] -> return $ sToV e
         syntax "let" evalLet
+        syntax "letrec" evalLetrec
         syntax "if" evalIf
         
         subr "print" $ \vs -> do
@@ -86,6 +87,10 @@ prims = flip execState [] list
         subr "-" $ evalNum (-) $ Right negate
         subr "*" $ evalNum (*) $ Left 1
         subr "/" $ evalNum (/) $ Right recip
+        subr "mod" $ \[va, vb] -> do
+            a <- unnum va
+            b <- unnum vb
+            return $ A $ Num $ fromIntegral $ mod (floor a) (floor b)
         
         subr "<" $ evalCompare (<)
         subr ">" $ evalCompare (>)
@@ -97,7 +102,7 @@ prims = flip execState [] list
         subr "car" $ \[L (x:_)] -> return x
         subr "cdr" $ \[L (_:xs)] -> return $ L xs
         subr "cons" $ \[x, L xs] -> return $ L (x:xs)
-        subr "null" $ \[L xs] -> return $ A $ Bool $ null xs
+        subr "null?" $ \[L xs] -> return $ A $ Bool $ null xs
         subr "apply" $ \[f, L xs] -> evalApply f xs
         
         let io f vs = liftIO $ do
@@ -142,7 +147,7 @@ sToV (S s) = case s of
 
 evalNum :: (Double -> Double -> Double) -> Either Double (Double -> Double) -> [V] -> I V
 evalNum _ (Left d) [] = return $ A $ Num d
-evalNum _ (Right _) [] = fail "procedure requires at least one argument"
+evalNum _ (Right _) [] = fail $ "procedure requires at least one argument"
 evalNum _ (Left _) [n] = return n
 evalNum _ (Right op) [nv] = fmap (A . Num . op) $ unnum nv
 evalNum op _ xs = fmap (A . Num . foldl1 op) $ mapM unnum xs
@@ -172,11 +177,21 @@ isTrue (A (Bool False)) = False
 isTrue _ = True
 
 evalLet (S (Right bindings):body) = do
-    (vars, exps) <- fmap unzip $ mapM makePair bindings
+    (vars, exps) <- unzipLetlist bindings
     env <- getEnv
     apply (F env (Left vars) body) exps
+
+unzipLetlist :: [S] -> I ([String], [S])
+unzipLetlist bindings = fmap unzip $ mapM makePair bindings
     where
     makePair (S (Right [S (Left (Sym name)), expr])) = return (name, expr)
     makePair _ = fail "syntax error"
 
-evalLet _ = fail "syntax error"
+evalLetrec (S (Right bindings):body) = do
+    (vars, exps) <- unzipLetlist bindings
+    let newFrame = makeFrame [(v, Bottom $ "letrec dummy for " ++ v) | v <- vars]
+    vals <- withEnv (addEnv newFrame) $ mapM eval exps
+    env <- getEnv
+    evalApply (F env (Left vars) body) vals
+
+evalLetrec _ = fail "syntax error"

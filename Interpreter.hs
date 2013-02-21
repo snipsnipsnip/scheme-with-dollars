@@ -54,7 +54,12 @@ setEnv :: Env -> I ()
 setEnv = I . put
 
 withEnv :: (Env -> Env) -> I a -> I a
-withEnv f = I . ErrorT . withStateT f . runErrorT . unI
+withEnv f = I . ErrorT . sandbox . withStateT f . runErrorT . unI
+  where
+  sandbox :: Monad m => StateT s m a -> StateT s m a
+  sandbox m = StateT $ \s -> do
+      (a, _) <- runStateT m s
+      return (a, s)
 
 type Frame = [(String, V)]
 addFrame name value frame = (name, value) : frame
