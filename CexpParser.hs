@@ -17,13 +17,17 @@ type Ctoken = (Int, Maybe S)
 type Cexp = [Ctoken]
 
 cexp :: MonadParser p => p a -> p Cexp
-cexp p = many $ do
+cexp p = fmap concat $ many $ do
     whitespace
-    liftA2 (,) pos (colon <|> s)
+    quote <|> do
+      fmap return $ liftA2 (,) (fmap (2 *) pos) (colon <|> s)
     where
     colon = p $> Nothing
     s = fmap Just sexp
     pos = fmap fst getCaret
+    quote = do
+      p <- pos
+      char '\'' $> [(p * 2, Nothing), (p * 2 + 1, Just $ S $ Left $ Sym "quote")]
 
 type M a = State [(Int, [S])] a
 
