@@ -14,6 +14,7 @@ module Interpreter
 , addFrame
 , getEnv
 , setEnv
+, withEnv
 , eval
 , apply
 , evalApply
@@ -29,9 +30,15 @@ import Data.List
 import System.IO
 import SexpParser
 
-newtype I a = I (ErrorT String (StateT Env (ContT (V, Env) IO)) a)
-    deriving
-    (Monad, Functor, MonadIO, MonadCont, MonadError String)
+newtype I a = I
+    { unI :: ErrorT String (StateT Env (ContT (V, Env) IO)) a
+    } deriving
+    ( Monad
+    , Functor
+    , MonadIO
+    , MonadCont
+    , MonadError String
+    )
 
 runI :: Env -> I V -> IO (V, Env)
 runI env (I i) = flip runContT return $ flip runStateT env $ fmap coerceError $ runErrorT i
@@ -44,6 +51,9 @@ getEnv = I get
 
 setEnv :: Env -> I ()
 setEnv = I . put
+
+withEnv :: (Env -> Env) -> I a -> I a
+withEnv f = I . ErrorT . withStateT f . runErrorT . unI
 
 type Frame = [(String, V)]
 addFrame name value frame = (name, value) : frame
@@ -101,28 +111,20 @@ eval (S s) = case s of
         lookupName a
     Left a -> return $ A a
 
-mapI f (I i) = I $ ErrorT $ f $ runErrorT i
-
-sandbox :: Monad m => StateT s m a -> StateT s m a
-sandbox m = StateT $ \s -> do
-    (a, _) <- runStateT m s
-    return (a, s)
-
-apply :: V -> Syntax
+apply :: V -> [S] -> I V
 apply (Prim _ (Syntax s)) args = do
     s args
 apply v args = do
     values <- mapM eval args
     evalApply v values
 
-evalApply :: V -> Subr
+evalApply :: V -> [V] -> I V
 evalApply (Prim _ (Subr s)) values = do
     s values
 evalApply v@(F env argspec f) values = do
-    mapI sandbox $ do
-        frame <- bind argspec values
-        I $ put $ flip addEnv env $ makeFrame frame
-        evalBegin f
+    frame <- fmap makeFrame $ bind argspec values
+    withEnv (addEnv frame) $ do
+      evalBegin f
     where
     bind (Left argnames) values
         | arity == passed = return $ zip argnames values
