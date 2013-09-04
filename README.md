@@ -1,7 +1,7 @@
 scheme-with-dollars, or $cheme
 ===================
 
-(Be careful not to fall forward)
+(watch your step before reading below)
 
 This:
 
@@ -18,7 +18,7 @@ This:
                 v)))))))
 ```
 
-becomes like this:
+could be written like this:
 
 ```scheme
 (define Y
@@ -33,7 +33,7 @@ becomes like this:
                 v
 ```
 
-or like this.
+or even like this.
 
 ```scheme
 $ define Y
@@ -47,3 +47,5 @@ $ define Y
               $ $ x x
                 v 
 ```
+
+I love haskell.
