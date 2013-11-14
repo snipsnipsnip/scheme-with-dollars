@@ -1,10 +1,10 @@
-module ExprParser
+module Dcheme.Parser.ExprParser
 ( number
 , whitespace
 , whitespace1
 ) where
 
-import ParserCombinator
+import Dcheme.Parser.ParserCombinator
 
 expr :: MonadParser p => p Double
 expr = summ

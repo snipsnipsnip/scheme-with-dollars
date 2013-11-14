@@ -1,14 +1,14 @@
-module CexpParser
-( module SexpParser
+module Dcheme.Parser.CexpParser
+( module Dcheme.Parser.SexpParser
 , parseManyCexp
 ) where
 
 import Control.Monad.State
-import ExprParser
-import ParserCombinator
 import Data.List
-import SexpParser
 import Debug.Trace
+import Dcheme.Parser.ExprParser
+import Dcheme.Parser.SexpParser
+import Dcheme.Parser.ParserCombinator
 
 parseManyCexp :: String -> Either String ([S], String)
 parseManyCexp = runP $ fmap cToS $ cexp $ char '$'

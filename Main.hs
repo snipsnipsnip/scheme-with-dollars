@@ -6,10 +6,10 @@ import Control.Applicative
 import Data.List
 import System.IO
 import System.Directory
-import CexpParser
-import Interpreter
 import Control.Exception (try, evaluate, PatternMatchFail (..), bracket)
 import System.IO.Error (isEOFError, isUserError, catchIOError)
+import Dcheme.Parser.CexpParser
+import Dcheme.Interpreter
 
 load :: FilePath -> IO (V, Env)
 load file = do

@@ -1,7 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GADTs #-}
 
-module Interpreter
+module Dcheme.Interpreter.I
 ( I ()
 , runI
 , V (..)
@@ -29,7 +29,7 @@ import Control.Monad.Cont
 import Control.Applicative
 import Data.List
 import System.IO
-import SexpParser
+import Dcheme.Sexp
 
 newtype I a = I
     { unI :: ErrorT String (StateT Env (ContT (V, Env) IO)) a

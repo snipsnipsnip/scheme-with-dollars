@@ -1,6 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module ParserCombinator
+module Dcheme.Parser.ParserCombinator
 ( P ()
 , MonadParser (..)
 , char

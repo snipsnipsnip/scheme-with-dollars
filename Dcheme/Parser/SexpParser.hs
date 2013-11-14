@@ -1,5 +1,5 @@
-module SexpParser
-( module Sexp
+module Dcheme.Parser.SexpParser
+( module Dcheme.Sexp
 , parseSexp
 , parseManySexp
 , parseAtom
@@ -7,9 +7,9 @@ module SexpParser
 , sexp
 ) where
 
-import ExprParser
-import ParserCombinator
-import Sexp
+import Dcheme.Parser.ExprParser
+import Dcheme.Parser.ParserCombinator
+import Dcheme.Sexp
 
 sexp :: MonadParser p => p S
 sexp = ws *> sexp1
