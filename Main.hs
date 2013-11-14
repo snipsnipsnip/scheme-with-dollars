@@ -9,7 +9,7 @@ import System.Directory
 import CexpParser
 import Interpreter
 import Control.Exception (try, evaluate, PatternMatchFail (..), bracket)
-import System.IO.Error (isEOFError, isUserError)
+import System.IO.Error (isEOFError, isUserError, catchIOError)
 
 load :: FilePath -> IO (V, Env)
 load file = do
@@ -30,7 +30,7 @@ repl = do
         (result, env) <- runEI env line
         print result
         return $ Just env
-    `catch` \e -> do
+    `catchIOError` \e -> do
         unless (isEOFError e) (printError e)
         return $ do
             guard $ isUserError e
@@ -110,7 +110,7 @@ prims = flip execState [] list
         subr "apply" $ \[f, L xs] -> evalApply f xs
         
         let io f vs = liftIO $ do
-            f vs `catch` \e -> do
+            f vs `catchIOError` \e -> do
                 return $ U $ "io error: " ++ show e
         
         subr "pwd" $ io $ \[] -> do
