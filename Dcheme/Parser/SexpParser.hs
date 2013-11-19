@@ -15,18 +15,20 @@ sexp :: MonadParser p => p S
 sexp = ws *> sexp1
 
 sexp1 :: MonadParser p => p S
-sexp1 = fmap S (atom <|> quote <|> list)
+sexp1 = atom <|> quote <|> list
     where
-    quote = fmap wrap $ do
-        char '\''
-        sexp
-        where
-        wrap s = Right [S $ Left $ Sym "quote", s]
-    
-    atom = fmap Left parseAtom
-    
-    list = fmap Right parseList
-    
+    quote = quotelike '\'' "quote" <|>
+      quotelike ',' "unquote" <|>
+      quotelike '`' "quasiquote"
+    atom = fmap (S . Left) parseAtom
+    list = fmap (S . Right) parseList
+
+quotelike :: MonadParser p => Char -> String -> p S
+quotelike operator name = do
+  char operator
+  s <- sexp
+  return $ S $ Right [S $ Left $ Sym name, s]
+
 ws, ws1, wsaft :: MonadParser p => p ()
 ws = whitespace >> wsaft
 ws1 = whitespace1 >> wsaft
@@ -47,7 +49,7 @@ parseAtom = str <|> sharp <|> num <|> sym
     special = mapM_ char "newline" $> '\n' <|> mapM_ char "space" $> ' '
     
     name = liftA2 (:) first (many rest)
-    first = charExcept $ prohibited ++ ".#"
+    first = charExcept $ ".#" ++ prohibited
     rest = charExcept prohibited
     prohibited = " \t\n\\,'\"()[]|"
 
